@@ -1,0 +1,349 @@
+Menu="Tasks:61"
+Type="xmenu"
+Title="Podman"
+Tag="fa-cube"
+Cond="is_file('/usr/local/bin/podman-manager')"
+Markdown="false"
+---
+<?php
+$docroot = $docroot ?? $_SERVER['DOCUMENT_ROOT'] ?: '/usr/local/emhttp';
+$cfg = parse_plugin_cfg('podman-manager');
+$apiPort = $cfg['API_PORT'] ?? '18734';
+$refreshInterval = $cfg['REFRESH_INTERVAL'] ?? '10000';
+?>
+
+<link rel="stylesheet" href="<?autov('/plugins/podman-manager/styles/podman.css')?>">
+
+<div id="podman-header" class="title">
+  <span class="left">
+    <span id="podman-host-badges"></span>
+  </span>
+  <span class="right">
+    <span id="podman-summary"></span>
+    <input type="text" id="podman-filter" placeholder="Filter containers..." class="podman-filter">
+  </span>
+</div>
+
+<table class="tablesorter shift podman-table" id="podman_list">
+  <thead>
+    <tr>
+      <th>Host</th>
+      <th>Container</th>
+      <th>Image</th>
+      <th>State</th>
+      <th>IP / Ports</th>
+      <th>Volumes</th>
+    </tr>
+  </thead>
+  <tbody id="podman_tbody">
+    <tr><td colspan="6" style="text-align:center"><i class="fa fa-spinner fa-spin"></i> Loading...</td></tr>
+  </tbody>
+</table>
+
+<div id="podman-detail-panel" class="podman-detail" style="display:none">
+  <div class="podman-detail-header">
+    <span id="podman-detail-title"></span>
+    <button onclick="closePodmanDetail()" class="podman-close">&times;</button>
+  </div>
+  <div id="podman-detail-body"></div>
+</div>
+
+<div id="podman-log-dialog" style="display:none" title="Container Logs">
+  <pre id="podman-log-content" class="podman-logs"></pre>
+</div>
+
+<script>
+var podmanApiBase = 'http://127.0.0.1:<?=$apiPort?>/api';
+var podmanRefreshMs = <?=$refreshInterval?>;
+var podmanTimer = null;
+var podmanData = null;
+
+function podmanLoadList() {
+  $.getJSON(podmanApiBase + '/overview', function(data) {
+    podmanData = data;
+    podmanRenderList(data);
+    podmanRenderBadges(data);
+    podmanRenderSummary(data);
+  }).fail(function(xhr) {
+    $('#podman_tbody').html(
+      '<tr><td colspan="6" style="text-align:center;color:#e04040">' +
+      '<i class="fa fa-exclamation-triangle"></i> Backend unreachable. ' +
+      'Is podman-manager running?</td></tr>'
+    );
+  }).always(function() {
+    podmanTimer = setTimeout(podmanLoadList, podmanRefreshMs);
+  });
+}
+
+function podmanRenderList(data) {
+  var filter = $('#podman-filter').val().toLowerCase();
+  var html = '';
+  var hostColors = {
+    'online': 'green-text',
+    'offline': 'red-text',
+    'error': 'orange-text'
+  };
+
+  if (!data || !data.hosts) {
+    html = '<tr><td colspan="6" style="text-align:center">No data</td></tr>';
+    $('#podman_tbody').html(html);
+    return;
+  }
+
+  data.hosts.forEach(function(host) {
+    if (host.status !== 'online' || !host.containers) {
+      html += '<tr class="podman-host-offline">' +
+        '<td><i class="fa fa-server red-text"></i> ' + host.name + '</td>' +
+        '<td colspan="5" class="red-text">' + (host.error || 'Offline') + '</td></tr>';
+      return;
+    }
+
+    host.containers.forEach(function(ct) {
+      if (filter && ct.name.toLowerCase().indexOf(filter) === -1 &&
+          ct.image.toLowerCase().indexOf(filter) === -1 &&
+          host.name.toLowerCase().indexOf(filter) === -1) {
+        return;
+      }
+
+      var stateIcon, stateClass;
+      if (ct.state === 'running') {
+        stateIcon = 'fa-play';
+        stateClass = 'green-text';
+      } else if (ct.state === 'exited' || ct.state === 'stopped') {
+        stateIcon = 'fa-square';
+        stateClass = 'red-text';
+      } else {
+        stateIcon = 'fa-circle';
+        stateClass = 'orange-text';
+      }
+
+      var ports = '';
+      if (ct.ports && ct.ports.length > 0) {
+        ports = ct.ports.map(function(p) {
+          var hostBind = (p.host_ip && p.host_ip !== '0.0.0.0') ? p.host_ip + ':' : '';
+          return hostBind + p.host_port + ':' + p.container_port + '/' + p.protocol;
+        }).join('<br>');
+      }
+
+      var nets = '';
+      if (ct.networks && ct.networks.length > 0) {
+        nets = ct.networks.map(function(n) {
+          return n.ip ? n.name + ' (' + n.ip + ')' : n.name;
+        }).join('<br>');
+      }
+      var ipPorts = [nets, ports].filter(Boolean).join('<br>');
+
+      var vols = '';
+      if (ct.mounts && ct.mounts.length > 0) {
+        vols = ct.mounts.map(function(m) {
+          return '<span title="' + m.source + ' &rarr; ' + m.destination + '">' +
+            podmanShortPath(m.source) + '</span>';
+        }).join('<br>');
+      }
+
+      var shortImage = ct.image.replace(/^docker\.io\/library\//, '').replace(/^docker\.io\//, '');
+
+      html += '<tr class="podman-ct-row" data-host="' + host.name + '" data-id="' + ct.id + '" ' +
+        'data-name="' + ct.name + '" data-state="' + ct.state + '">' +
+        '<td>' + host.name + '</td>' +
+        '<td class="podman-ct-name">' +
+          '<i class="fa ' + stateIcon + ' ' + stateClass + '"></i> ' +
+          '<a href="#" onclick="podmanShowDetail(\'' + host.name + '\',\'' + ct.name + '\'); return false;">' +
+          ct.name + '</a></td>' +
+        '<td class="podman-image">' + shortImage + '</td>' +
+        '<td><span class="' + stateClass + '">' + ct.status + '</span></td>' +
+        '<td class="podman-ports">' + ipPorts + '</td>' +
+        '<td class="podman-vols">' + vols + '</td>' +
+        '</tr>';
+    });
+  });
+
+  if (html === '') {
+    html = '<tr><td colspan="6" style="text-align:center">No containers found</td></tr>';
+  }
+
+  $('#podman_tbody').html(html);
+  podmanAttachContextMenus();
+}
+
+function podmanRenderBadges(data) {
+  var html = '';
+  data.hosts.forEach(function(host) {
+    var cls = host.status === 'online' ? 'green-text' : 'red-text';
+    var icon = host.status === 'online' ? 'fa-check-circle' : 'fa-times-circle';
+    var count = host.container_count || {};
+    var label = host.name;
+    if (host.status === 'online') {
+      label += ' (' + (count.running || 0) + '/' + (count.total || 0) + ')';
+    }
+    html += '<span class="podman-badge ' + cls + '">' +
+      '<i class="fa ' + icon + '"></i> ' + label + '</span> ';
+  });
+  $('#podman-host-badges').html(html);
+}
+
+function podmanRenderSummary(data) {
+  var total = 0, running = 0;
+  data.hosts.forEach(function(h) {
+    if (h.container_count) {
+      total += h.container_count.total;
+      running += h.container_count.running;
+    }
+  });
+  $('#podman-summary').text(running + ' / ' + total + ' running');
+}
+
+function podmanShortPath(p) {
+  if (!p) return '';
+  var parts = p.split('/');
+  if (parts.length > 3) {
+    return '.../' + parts.slice(-2).join('/');
+  }
+  return p;
+}
+
+function podmanAttachContextMenus() {
+  $('.podman-ct-row').each(function() {
+    var $row = $(this);
+    var host = $row.data('host');
+    var id = $row.data('name');
+    var state = $row.data('state');
+
+    var opts = [];
+    if (state === 'running') {
+      opts.push({text: 'Stop', icon: 'fa-stop', action: function() { podmanAction(host, id, 'stop'); }});
+      opts.push({text: 'Restart', icon: 'fa-refresh', action: function() { podmanAction(host, id, 'restart'); }});
+    } else {
+      opts.push({text: 'Start', icon: 'fa-play', action: function() { podmanAction(host, id, 'start'); }});
+    }
+    opts.push({text: 'Logs', icon: 'fa-file-text-o', action: function() { podmanShowLogs(host, id); }});
+    opts.push({text: 'Details', icon: 'fa-info-circle', action: function() { podmanShowDetail(host, id); }});
+
+    if (typeof context !== 'undefined' && context.attach) {
+      context.attach($row, opts);
+    } else {
+      $row.off('contextmenu').on('contextmenu', function(e) {
+        e.preventDefault();
+        podmanShowContextMenu(e, opts);
+      });
+    }
+  });
+}
+
+function podmanShowContextMenu(e, opts) {
+  $('.podman-ctx-menu').remove();
+  var html = '<div class="podman-ctx-menu" style="position:fixed;left:' + e.clientX + 'px;top:' + e.clientY + 'px;z-index:9999;background:#1c1c1c;border:1px solid #444;border-radius:4px;padding:4px 0;min-width:150px">';
+  opts.forEach(function(o) {
+    html += '<div class="podman-ctx-item" style="padding:6px 16px;cursor:pointer;color:#e0e0e0" ' +
+      'onmouseover="this.style.background=\'#333\'" onmouseout="this.style.background=\'transparent\'">' +
+      '<i class="fa ' + o.icon + '" style="width:20px"></i> ' + o.text + '</div>';
+  });
+  html += '</div>';
+  var $menu = $(html).appendTo('body');
+  $menu.find('.podman-ctx-item').each(function(i) {
+    $(this).on('click', function() { opts[i].action(); $menu.remove(); });
+  });
+  $(document).one('click', function() { $menu.remove(); });
+}
+
+function podmanAction(host, containerId, action) {
+  var $row = $('.podman-ct-row[data-host="' + host + '"][data-name="' + containerId + '"]');
+  var $icon = $row.find('.podman-ct-name i');
+  var origClass = $icon.attr('class');
+  $icon.attr('class', 'fa fa-refresh fa-spin');
+
+  $.post(podmanApiBase + '/hosts/' + host + '/containers/' + encodeURIComponent(containerId) + '/' + action,
+    function(data) {
+      if (data && !data.success) {
+        if (typeof swal !== 'undefined') {
+          swal('Error', data.error || 'Action failed', 'error');
+        } else {
+          alert('Error: ' + (data.error || 'Action failed'));
+        }
+      }
+      setTimeout(podmanLoadList, 1000);
+    }
+  ).fail(function() {
+    $icon.attr('class', origClass);
+    alert('Failed to ' + action + ' container');
+  });
+}
+
+function podmanShowDetail(host, containerId) {
+  $.getJSON(podmanApiBase + '/hosts/' + host + '/containers/' + encodeURIComponent(containerId), function(data) {
+    $('#podman-detail-title').text(data.name + ' on ' + host);
+
+    var html = '<table class="podman-detail-table">';
+    html += '<tr><td><strong>Image</strong></td><td>' + data.image + '</td></tr>';
+    html += '<tr><td><strong>State</strong></td><td>' + data.state + ' (PID: ' + (data.pid || 'N/A') + ')</td></tr>';
+    html += '<tr><td><strong>Hostname</strong></td><td>' + (data.hostname || 'N/A') + '</td></tr>';
+    html += '<tr><td><strong>Restart Policy</strong></td><td>' + (data.restart_policy || 'none') + '</td></tr>';
+    html += '<tr><td><strong>Network Mode</strong></td><td>' + (data.network_mode || 'N/A') + '</td></tr>';
+
+    if (data.networks && data.networks.length > 0) {
+      html += '<tr><td><strong>Networks</strong></td><td>';
+      data.networks.forEach(function(n) {
+        html += n.name + ': ' + (n.ip || 'no IP') + ' (gw: ' + (n.gateway || 'none') + ')<br>';
+      });
+      html += '</td></tr>';
+    }
+
+    if (data.ports && data.ports.length > 0) {
+      html += '<tr><td><strong>Ports</strong></td><td>';
+      data.ports.forEach(function(p) {
+        html += (p.host_ip || '0.0.0.0') + ':' + p.host_port + ' &rarr; ' + p.container_port + '/' + p.protocol + '<br>';
+      });
+      html += '</td></tr>';
+    }
+
+    if (data.mounts && data.mounts.length > 0) {
+      html += '<tr><td><strong>Volumes</strong></td><td>';
+      data.mounts.forEach(function(m) {
+        var rw = m.rw ? 'rw' : 'ro';
+        html += m.source + ' &rarr; ' + m.destination + ' (' + m.type + ', ' + rw + ')<br>';
+      });
+      html += '</td></tr>';
+    }
+
+    if (data.labels && Object.keys(data.labels).length > 0) {
+      html += '<tr><td><strong>Labels</strong></td><td>';
+      Object.keys(data.labels).sort().forEach(function(k) {
+        html += '<span class="podman-label">' + k + '=' + data.labels[k] + '</span><br>';
+      });
+      html += '</td></tr>';
+    }
+
+    html += '</table>';
+    $('#podman-detail-body').html(html);
+    $('#podman-detail-panel').slideDown(200);
+  });
+}
+
+function closePodmanDetail() {
+  $('#podman-detail-panel').slideUp(200);
+}
+
+function podmanShowLogs(host, containerId) {
+  var tail = 200;
+  $.getJSON(podmanApiBase + '/hosts/' + host + '/containers/' + encodeURIComponent(containerId) + '/logs?tail=' + tail, function(data) {
+    $('#podman-log-content').text(data.logs || 'No logs available');
+    if ($.fn.dialog) {
+      $('#podman-log-dialog').dialog({
+        title: 'Logs: ' + containerId + ' (' + host + ')',
+        modal: true, width: 900, height: 600,
+        buttons: { Close: function() { $(this).dialog('close'); } }
+      });
+    } else {
+      $('#podman-log-dialog').show();
+    }
+  });
+}
+
+$('#podman-filter').on('input', function() {
+  if (podmanData) podmanRenderList(podmanData);
+});
+
+$(function() {
+  podmanLoadList();
+});
+</script>
