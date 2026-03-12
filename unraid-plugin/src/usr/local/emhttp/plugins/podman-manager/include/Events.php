@@ -49,7 +49,7 @@ switch ($action) {
             echo json_encode([
                 'success' => true,
                 'message' => "SSH key generated.\n\nCopy this public key to your Podman hosts:\n\n$pubKey\n" .
-                    "Run on each host:\n  ssh-copy-id -i $keyFile.pub brdweb@<host-ip>"
+                    "Run on each host:\n  ssh-copy-id -i $keyFile.pub your-user@<host-ip>"
             ]);
         } else {
             echo json_encode(['success' => false, 'error' => implode("\n", $out)]);

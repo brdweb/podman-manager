@@ -33,9 +33,8 @@ Both share the same Go backend binary.
                     ├──────────┬──────────┬────────────────┤
                     │  SSH     │  SSH     │  SSH           │
                     ▼          ▼          ▼                │
-              xwing-podman  yoda-podman  obiwan-podman     │
+              host-alpha    host-beta    host-gamma        │
               (rootful)     (rootful)    (rootless)        │
-              34 containers 23 containers 16 containers    │
                     └─────────────────────────────────────┘
                          ▲                    ▲
                          │                    │

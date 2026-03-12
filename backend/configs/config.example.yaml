@@ -17,21 +17,21 @@ ssh:
 
 # Podman hosts to manage
 hosts:
-  - name: "xwing-podman"
-    address: "192.168.40.80"
+  - name: "host-alpha"
+    address: "10.0.0.101"
     port: 22
-    user: "brdweb"
+    user: "your-user"
     # rootful = uses 'sudo podman', rootless = uses 'podman' directly
     mode: "rootful"
 
-  - name: "yoda-podman"
-    address: "192.168.40.60"
+  - name: "host-beta"
+    address: "10.0.0.102"
     port: 22
-    user: "brdweb"
+    user: "your-user"
     mode: "rootful"
 
-  - name: "obiwan-podman"
-    address: "192.168.40.70"
+  - name: "host-gamma"
+    address: "10.0.0.103"
     port: 22
-    user: "brdweb"
+    user: "your-user"
     mode: "rootless"
