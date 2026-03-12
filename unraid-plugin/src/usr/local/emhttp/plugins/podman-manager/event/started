@@ -1,0 +1,30 @@
+#!/bin/bash
+PLUGIN_DIR="/boot/config/plugins/podman-manager"
+CONFIG="$PLUGIN_DIR/config.yaml"
+BINARY="/usr/local/bin/podman-manager"
+LOGFILE="/var/log/podman-manager.log"
+
+source /usr/local/emhttp/plugins/podman-manager/default.cfg
+source "$PLUGIN_DIR/podman-manager.cfg" 2>/dev/null
+
+if [ "$ENABLED" != "true" ]; then
+  logger "podman-manager: disabled in settings, not starting"
+  exit 0
+fi
+
+if [ ! -f "$CONFIG" ]; then
+  logger "podman-manager: no config.yaml found, not starting"
+  exit 0
+fi
+
+if [ ! -f "$BINARY" ]; then
+  logger "podman-manager: binary not found at $BINARY"
+  exit 1
+fi
+
+pkill -f "$BINARY" 2>/dev/null
+sleep 1
+
+$BINARY --config "$CONFIG" > "$LOGFILE" 2>&1 &
+
+logger "podman-manager: backend started (PID $!)"

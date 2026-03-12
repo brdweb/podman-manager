@@ -1,0 +1,19 @@
+#!/bin/bash
+PLUGIN_DIR="/boot/config/plugins/podman-manager"
+BINARY="/usr/local/bin/podman-manager"
+
+source "$PLUGIN_DIR/podman-manager.cfg" 2>/dev/null
+
+if [ "$ENABLED" = "true" ]; then
+  if pgrep -f "$BINARY" > /dev/null 2>&1; then
+    pkill -TERM -f "$BINARY" 2>/dev/null
+    sleep 2
+  fi
+  if [ -f "$PLUGIN_DIR/config.yaml" ]; then
+    $BINARY --config "$PLUGIN_DIR/config.yaml" > /var/log/podman-manager.log 2>&1 &
+    logger "podman-manager: backend restarted after settings change"
+  fi
+else
+  pkill -TERM -f "$BINARY" 2>/dev/null
+  logger "podman-manager: disabled, backend stopped"
+fi

@@ -1,0 +1,11 @@
+#!/bin/bash
+BINARY="/usr/local/bin/podman-manager"
+
+pkill -TERM -f "$BINARY" 2>/dev/null
+sleep 2
+
+if pgrep -f "$BINARY" > /dev/null 2>&1; then
+  pkill -KILL -f "$BINARY" 2>/dev/null
+fi
+
+logger "podman-manager: backend stopped"
