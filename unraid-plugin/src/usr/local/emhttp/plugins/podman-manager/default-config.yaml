@@ -1,0 +1,10 @@
+server:
+  port: 18734
+  bind: "127.0.0.1"
+
+ssh:
+  key_path: "/boot/config/plugins/podman-manager/id_ed25519"
+  connect_timeout: "5s"
+  keepalive_interval: "30s"
+
+hosts: []

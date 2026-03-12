@@ -1,0 +1,140 @@
+Menu="Settings"
+Title="Podman Manager"
+Icon="fa-cube"
+Tag="fa-cube"
+---
+<?php
+$docroot = $docroot ?? $_SERVER['DOCUMENT_ROOT'] ?: '/usr/local/emhttp';
+$cfg = parse_plugin_cfg('podman-manager');
+$pluginDir = '/boot/config/plugins/podman-manager';
+$configFile = "$pluginDir/config.yaml";
+$keyFile = "$pluginDir/id_ed25519";
+
+$configExists = file_exists($configFile);
+$keyExists = file_exists($keyFile);
+$backendRunning = trim(shell_exec("pgrep -f /usr/local/bin/podman-manager 2>/dev/null")) !== '';
+
+$configContent = $configExists ? htmlspecialchars(file_get_contents($configFile)) : '';
+?>
+
+<form markdown="1" method="POST" action="/update.php" target="progressFrame">
+<input type="hidden" name="#file" value="podman-manager/podman-manager.cfg">
+<input type="hidden" name="#command" value="/usr/local/emhttp/plugins/podman-manager/event/apply">
+
+_(Plugin Enabled)_:
+: <select name="ENABLED">
+  <?=mk_option($cfg['ENABLED'], "true", _("Yes"))?>
+  <?=mk_option($cfg['ENABLED'], "false", _("No"))?>
+  </select>
+
+_(API Port)_:
+: <input type="number" name="API_PORT" value="<?=$cfg['API_PORT']?>" min="1024" max="65535" class="narrow">
+
+_(Refresh Interval (ms))_:
+: <input type="number" name="REFRESH_INTERVAL" value="<?=$cfg['REFRESH_INTERVAL']?>" min="2000" max="60000" step="1000" class="narrow">
+
+&nbsp;
+: <input type="submit" name="#apply" value="_(Apply)_" disabled>
+  <input type="button" value="_(Done)_" onclick="done()">
+</form>
+
+<div class="title"><span class="left">_(Backend Status)_</span></div>
+
+<table class="unraid">
+  <tr>
+    <td>_(Backend Process)_</td>
+    <td>
+      <?if ($backendRunning):?>
+        <span class="green-text"><i class="fa fa-check-circle"></i> Running</span>
+        <input type="button" value="_(Restart)_" onclick="podmanBackendAction('restart')">
+        <input type="button" value="_(Stop)_" onclick="podmanBackendAction('stop')">
+      <?else:?>
+        <span class="red-text"><i class="fa fa-times-circle"></i> Stopped</span>
+        <input type="button" value="_(Start)_" onclick="podmanBackendAction('start')">
+      <?endif;?>
+    </td>
+  </tr>
+  <tr>
+    <td>_(SSH Key)_</td>
+    <td>
+      <?if ($keyExists):?>
+        <span class="green-text"><i class="fa fa-key"></i> Present</span>
+        <code><?=$keyFile?></code>
+      <?else:?>
+        <span class="orange-text"><i class="fa fa-exclamation-triangle"></i> Missing</span>
+        <input type="button" value="_(Generate SSH Key)_" onclick="podmanGenerateKey()">
+      <?endif;?>
+    </td>
+  </tr>
+  <tr>
+    <td>_(Config File)_</td>
+    <td>
+      <?if ($configExists):?>
+        <span class="green-text"><i class="fa fa-file-text"></i> Present</span>
+        <code><?=$configFile?></code>
+      <?else:?>
+        <span class="orange-text"><i class="fa fa-exclamation-triangle"></i> Missing</span>
+        (will be created from defaults on apply)
+      <?endif;?>
+    </td>
+  </tr>
+</table>
+
+<?if ($configExists):?>
+<div class="title"><span class="left">_(Host Configuration)_</span></div>
+
+<blockquote class="inline_help">
+Edit the host configuration at <code><?=$configFile?></code> to add or remove Podman hosts.
+After editing, restart the backend for changes to take effect.
+</blockquote>
+
+<pre class="podman-config-preview"><?=$configContent?></pre>
+
+<input type="button" value="_(Edit Config)_" onclick="podmanEditConfig()">
+<?endif;?>
+
+<script>
+function podmanBackendAction(action) {
+  $.post('/plugins/podman-manager/include/Events.php', {
+    csrf_token: '<?=$var["csrf_token"]?>',
+    action: 'backend_' + action
+  }, function(data) {
+    if (data.success) {
+      location.reload();
+    } else {
+      if (typeof swal !== 'undefined') {
+        swal('Error', data.error || 'Action failed', 'error');
+      } else {
+        alert(data.error || 'Action failed');
+      }
+    }
+  }, 'json');
+}
+
+function podmanGenerateKey() {
+  $.post('/plugins/podman-manager/include/Events.php', {
+    csrf_token: '<?=$var["csrf_token"]?>',
+    action: 'generate_key'
+  }, function(data) {
+    if (data.success) {
+      if (typeof swal !== 'undefined') {
+        swal('SSH Key Generated', data.message, 'success').then(function() { location.reload(); });
+      } else {
+        alert(data.message);
+        location.reload();
+      }
+    } else {
+      alert(data.error || 'Failed to generate key');
+    }
+  }, 'json');
+}
+
+function podmanEditConfig() {
+  var configPath = '<?=$configFile?>';
+  if (typeof openEditor === 'function') {
+    openEditor(configPath);
+  } else {
+    window.open('/Tools/EditFile?f=' + encodeURIComponent(configPath), '_blank');
+  }
+}
+</script>
