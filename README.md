@@ -20,7 +20,7 @@ Podman Manager provides a unified dashboard to monitor and control Podman contai
 | Target | Description |
 |--------|-------------|
 | **Unraid Plugin** | Native Unraid WebGUI tab using PHP/jQuery (Dynamix framework) |
-| **Web App** | Modern containerized web application (future) |
+| **Web App** | Modern React+Vite standalone web interface |
 
 Both share the same Go backend binary.
 
@@ -39,9 +39,9 @@ Both share the same Go backend binary.
                          ▲                    ▲
                          │                    │
                   ┌──────┴──────┐    ┌───────┴───────┐
-                  │ Unraid      │    │ Modern Web    │
-                  │ Plugin UI   │    │ App (future)  │
-                  │ (PHP/jQuery)│    │               │
+                  │ Unraid      │    │ React+Vite    │
+                  │ Plugin UI   │    │ Web App       │
+                  │ (PHP/jQuery)│    │ (standalone)  │
                   └─────────────┘    └───────────────┘
 ```
 
@@ -58,7 +58,12 @@ podman-manager/
 ├── unraid-plugin/           # Unraid plugin files
 │   ├── podman-manager.plg   # Plugin installer manifest
 │   └── src/                 # Plugin source (PHP, JS, events)
-└── webapp/                  # Future modern web UI
+└── webapp/                  # React+Vite standalone web UI
+    ├── src/api/             # Type-safe API client
+    ├── src/components/      # Reusable UI components
+    ├── src/pages/           # Dashboard, host detail views
+    ├── Dockerfile           # Multi-stage production build
+    └── docker-compose.yaml  # Dev environment
 ```
 
 ## Quick Start
@@ -131,6 +136,27 @@ So the current repo supports both:
 
 - fast local testing now
 - proper CA-compatible releases later
+
+## Web App
+
+### Development
+
+```bash
+cd webapp
+npm install
+npm run dev
+```
+
+The dev server starts at `http://localhost:5173` and proxies `/api` requests to the backend at `localhost:18734`.
+
+### Production (Docker)
+
+```bash
+cd webapp
+docker compose up --build
+```
+
+This starts both the Go backend and the webapp behind nginx on port 8080.
 
 ## API Endpoints
 

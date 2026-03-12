@@ -4,14 +4,12 @@
   <!ENTITY author      "brdweb">
   <!ENTITY version     "2026.03.12">
   <!ENTITY launch      "Tasks/PodmanManager">
-  <!ENTITY github      "brdweb/podman-manager">
-  <!ENTITY pluginURL   "https://raw.githubusercontent.com/&github;/main/unraid-plugin/podman-manager.plg">
   <!ENTITY pluginLOC   "/boot/config/plugins/&name;">
   <!ENTITY emhttpLOC   "/usr/local/emhttp/plugins/&name;">
 ]>
 
 <PLUGIN name="&name;" author="&author;" version="&version;"
-        launch="&launch;" pluginURL="&pluginURL;"
+        launch="&launch;"
         icon="fa-cube" min="7.0.0">
 
 <CHANGES>
@@ -24,9 +22,8 @@
 - Auto-refresh container status
 </CHANGES>
 
-<FILE Name="&pluginLOC;/&name;-&version;-x86_64-1.txz" Run="upgradepkg --install-new">
-  <URL>https://github.com/&github;/releases/download/v&version;/&name;-&version;-x86_64-1.txz</URL>
-  <SHA256>9e187de5b4f20f8fd75e46a457c75660c6465f1e3f3845f40e538de19c801315</SHA256>
+<FILE Name="&pluginLOC;/&name;-&version;-x86_64-1.txz" Run="upgradepkg --install-new --reinstall">
+  <LOCAL>&pluginLOC;/&name;-&version;-x86_64-1.txz</LOCAL>
 </FILE>
 
 <FILE Run="/bin/bash">
@@ -46,7 +43,7 @@
 
     chmod 755 /usr/local/bin/podman-manager
 
-    echo "&name; version &version; installed."
+    echo "&name; version &version; installed (local)."
   </INLINE>
 </FILE>
 
