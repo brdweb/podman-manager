@@ -1,0 +1,37 @@
+# Podman Manager Configuration
+# Copy this to config.yaml and update with your host details.
+
+server:
+  # Port for the REST API server
+  port: 18734
+  # Bind address: 127.0.0.1 for local-only (Unraid plugin), 0.0.0.0 for container
+  bind: "127.0.0.1"
+
+ssh:
+  # Path to the SSH private key (ed25519 recommended)
+  key_path: "~/.ssh/id_ed25519"
+  # Connection timeout per host
+  connect_timeout: "5s"
+  # Keepalive interval to prevent SSH drops
+  keepalive_interval: "30s"
+
+# Podman hosts to manage
+hosts:
+  - name: "xwing-podman"
+    address: "192.168.40.80"
+    port: 22
+    user: "brdweb"
+    # rootful = uses 'sudo podman', rootless = uses 'podman' directly
+    mode: "rootful"
+
+  - name: "yoda-podman"
+    address: "192.168.40.60"
+    port: 22
+    user: "brdweb"
+    mode: "rootful"
+
+  - name: "obiwan-podman"
+    address: "192.168.40.70"
+    port: 22
+    user: "brdweb"
+    mode: "rootless"
