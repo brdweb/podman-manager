@@ -1,0 +1,67 @@
+<?xml version='1.0' standalone='yes'?>
+<!DOCTYPE PLUGIN [
+  <!ENTITY name        "podman-manager">
+  <!ENTITY author      "brdweb">
+  <!ENTITY version     "@VERSION@">
+  <!ENTITY launch      "Tasks/PodmanManager">
+  <!ENTITY github      "@GITHUB_REPO@">
+  <!ENTITY pluginURL   "https://raw.githubusercontent.com/&github;/main/unraid-plugin/podman-manager.plg">
+  <!ENTITY pluginLOC   "/boot/config/plugins/&name;">
+  <!ENTITY emhttpLOC   "/usr/local/emhttp/plugins/&name;">
+]>
+
+<PLUGIN name="&name;" author="&author;" version="&version;"
+        launch="&launch;" pluginURL="&pluginURL;"
+        icon="fa-cube" min="7.0.0">
+
+<CHANGES>
+### @VERSION@
+- Initial release
+- Multi-host Podman container management
+- Shared Go backend for Unraid plugin and future web app
+- Start/stop/restart containers across remote hosts
+- View container details: IPs, ports, volumes
+- Auto-refresh container status
+</CHANGES>
+
+<FILE Name="&pluginLOC;/&name;-&version;-x86_64-1.txz" Run="upgradepkg --install-new">
+  <URL>https://github.com/&github;/releases/download/v&version;/&name;-&version;-x86_64-1.txz</URL>
+  <SHA256>@TXZ_SHA256@</SHA256>
+</FILE>
+
+<FILE Run="/bin/bash">
+  <INLINE>
+    mkdir -p &pluginLOC;
+
+    if [ ! -f &pluginLOC;/config.yaml ]; then
+      cp &emhttpLOC;/default-config.yaml &pluginLOC;/config.yaml
+      echo "Created default config at &pluginLOC;/config.yaml"
+    fi
+
+    if [ ! -f &pluginLOC;/id_ed25519 ]; then
+      echo "WARNING: No SSH key found at &pluginLOC;/id_ed25519"
+      echo "Generate one with: ssh-keygen -t ed25519 -f &pluginLOC;/id_ed25519 -N ''"
+      echo "Then copy the public key to your Podman hosts."
+    fi
+
+    chmod 755 /usr/local/bin/podman-manager
+
+    echo "&name; version &version; installed."
+  </INLINE>
+</FILE>
+
+<FILE Run="/bin/bash" Method="remove">
+  <INLINE>
+    pkill -f /usr/local/bin/podman-manager 2>/dev/null || true
+    sleep 1
+
+    removepkg &name;-&version;-x86_64-1 2>/dev/null
+    rm -rf &emhttpLOC;
+    rm -f /usr/local/bin/podman-manager
+
+    echo "&name; has been removed."
+    echo "Config preserved at &pluginLOC;/ (remove manually if desired)."
+  </INLINE>
+</FILE>
+
+</PLUGIN>
