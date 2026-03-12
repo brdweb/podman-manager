@@ -1,0 +1,19 @@
+services:
+  backend:
+    build:
+      context: ../backend
+      dockerfile: ../webapp/Dockerfile.backend
+    ports:
+      - "18734:18734"
+    volumes:
+      - ./config.yaml:/etc/podman-manager/config.yaml:ro
+      - ~/.ssh/id_ed25519:/root/.ssh/id_ed25519:ro
+    command: ["--config", "/etc/podman-manager/config.yaml"]
+
+  webapp:
+    build:
+      context: .
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
