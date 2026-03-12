@@ -1,0 +1,56 @@
+# Go
+backend/podman-manager
+backend/bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Go test
+*.test
+*.out
+coverage.html
+
+# Go workspace
+go.work
+go.work.sum
+
+# Build artifacts
+dist/
+*.txz
+*.tar.gz
+unraid-plugin/src/usr/local/bin/podman-manager
+unraid-plugin/dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets / keys (NEVER commit)
+*.pem
+id_ed25519
+id_ed25519.pub
+id_rsa
+id_rsa.pub
+*.key
+
+# Environment files
+.env
+*.env.local
+
+# Config with real credentials
+config.yaml
+!backend/configs/config.example.yaml
+
+# Node (for future webapp)
+node_modules/
+.next/
+build/
