@@ -26,7 +26,7 @@
 
 <FILE Name="&pluginLOC;/&name;-&version;-x86_64-1.txz" Run="upgradepkg --install-new">
   <URL>https://github.com/&github;/releases/download/v&version;/&name;-&version;-x86_64-1.txz</URL>
-  <SHA256>9e187de5b4f20f8fd75e46a457c75660c6465f1e3f3845f40e538de19c801315</SHA256>
+  <SHA256>c0781c9b9bc3beccdc52019f2411fbfad90e38b9bd218375ae9719ea41a4e902</SHA256>
 </FILE>
 
 <FILE Run="/bin/bash">
@@ -43,6 +43,8 @@
       echo "Generate one with: ssh-keygen -t ed25519 -f &pluginLOC;/id_ed25519 -N ''"
       echo "Then copy the public key to your Podman hosts."
     fi
+
+    rm -f &emhttpLOC;/PodmanSettings.page
 
     chmod 755 /usr/local/bin/podman-manager
 

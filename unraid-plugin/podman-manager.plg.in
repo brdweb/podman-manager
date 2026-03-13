@@ -44,6 +44,8 @@
       echo "Then copy the public key to your Podman hosts."
     fi
 
+    rm -f &emhttpLOC;/PodmanSettings.page
+
     chmod 755 /usr/local/bin/podman-manager
 
     echo "&name; version &version; installed."

@@ -48,8 +48,10 @@ switch ($action) {
             $pubKey = file_get_contents("$keyFile.pub");
             echo json_encode([
                 'success' => true,
-                'message' => "SSH key generated.\n\nCopy this public key to your Podman hosts:\n\n$pubKey\n" .
-                    "Run on each host:\n  ssh-copy-id -i $keyFile.pub your-user@<host-ip>"
+                'message' => "SSH key generated.\n\nCopy this public key to each Podman host:\n\n$pubKey\n" .
+                    "Note: the trailing host comment (for example, root@xwing) is just a label on the key and does not control which remote user is used.\n\n" .
+                    "Replace your-user with the SSH account on the Podman host and replace <host-ip> with that host's address:\n" .
+                    "  ssh-copy-id -i $keyFile.pub your-user@<host-ip>"
             ]);
         } else {
             echo json_encode(['success' => false, 'error' => implode("\n", $out)]);
