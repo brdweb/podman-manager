@@ -4,13 +4,43 @@ require_once "$docroot/webGui/include/Wrappers.php";
 
 header('Content-Type: application/json');
 
-$action = $_POST['action'] ?? '';
+$action = $_POST['action'] ?? $_GET['action'] ?? '';
 $pluginDir = '/boot/config/plugins/podman-manager';
 $configFile = "$pluginDir/config.yaml";
 $keyFile = "$pluginDir/id_ed25519";
 $binary = '/usr/local/bin/podman-manager';
+$cfg = parse_plugin_cfg('podman-manager');
+$apiPort = $cfg['API_PORT'] ?? '18734';
 
 switch ($action) {
+    case 'api_proxy':
+        $path = $_GET['path'] ?? '';
+        if (strpos($path, '/api/') !== 0) {
+            http_response_code(400);
+            echo json_encode(['error' => 'Invalid API path']);
+            break;
+        }
+        $url = "http://127.0.0.1:$apiPort" . $path;
+        $query = $_GET;
+        unset($query['action'], $query['path']);
+        if ($query) $url .= '?' . http_build_query($query);
+
+        $opts = ['http' => ['timeout' => 10, 'ignore_errors' => true]];
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            $opts['http']['method'] = 'POST';
+            $opts['http']['header'] = 'Content-Type: application/json';
+            $opts['http']['content'] = file_get_contents('php://input');
+        }
+        $ctx = stream_context_create($opts);
+        $response = @file_get_contents($url, false, $ctx);
+        if ($response === false) {
+            http_response_code(502);
+            echo json_encode(['error' => 'Backend unreachable']);
+        } else {
+            echo $response;
+        }
+        break;
+
     case 'backend_start':
         if (trim(shell_exec("pgrep -f $binary 2>/dev/null")) !== '') {
             echo json_encode(['success' => false, 'error' => 'Already running']);
