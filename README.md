@@ -1,28 +1,28 @@
+![Podman Manager](images/podman-manager.png)
+
 # Podman Manager
 
-Multi-host Podman container management with a shared Go backend, deployable as an Unraid plugin or a standalone web application.
+Multi-host Podman container management for Unraid and standalone deployment
 
-## Overview
+Podman Manager provides a unified dashboard to monitor and control Podman containers across multiple remote hosts. It connects to each host via SSH and executes Podman commands, exposing the results through a REST API consumed by either the native Unraid plugin or the standalone web application.
 
-Podman Manager provides a unified dashboard to monitor and control Podman containers across multiple remote hosts. It connects to each host via SSH and executes Podman commands, exposing the results through a REST API consumed by either frontend.
+## Features
 
-### Features
+- Multi-host dashboard — manage containers across unlimited remote Podman hosts
+- Full container lifecycle — start, stop, restart from the UI
+- Management method detection — automatically identifies Quadlet (systemd), Docker Compose, and standalone containers with visual badges
+- Quadlet (systemd) support — proper systemctl-based lifecycle management for Quadlet containers
+- Compose support — identifies Docker Compose-managed containers
+- Inline container details — click a container name to expand details (IPs, ports, volumes, networks)
+- Container logs — view logs directly from the UI
+- Bulk actions — checkbox selection with bulk start/stop/restart
+- Sortable columns — click Container or Host column headers to sort
+- Rootful and rootless Podman — supports both modes per-host
+- SSH-based — no agents to install on remote hosts, just SSH key access
+- PHP API proxy — works over both HTTP and HTTPS (no mixed-content issues)
+- In-browser config editor — edit config.yaml with syntax highlighting (ace editor)
 
-- List all containers across multiple Podman hosts (running and stopped)
-- Start, stop, and restart containers
-- View container details: IP addresses, port mappings, volume mounts, networks
-- View container logs
-- Host health monitoring with connectivity status
-- Grouped-by-host display with per-host status indicators
-
-### Deployment Options
-
-| Target | Description |
-|--------|-------------|
-| **Unraid Plugin** | Native Unraid WebGUI tab using PHP/jQuery (Dynamix framework) |
-| **Web App** | Modern React+Vite standalone web interface |
-
-Both share the same Go backend binary.
+<!-- Screenshots coming soon -->
 
 ## Architecture
 
@@ -45,6 +45,111 @@ Both share the same Go backend binary.
                   └─────────────┘    └───────────────┘
 ```
 
+## Deployment Options
+
+| Target | Description |
+|--------|-------------|
+| **Unraid Plugin** | Native Unraid WebGUI tab using PHP/jQuery (Dynamix framework) |
+| **Web App** | Modern React+Vite standalone web interface |
+
+Both frontends consume the same Go backend API at `localhost:18734`.
+
+## Installation
+
+### Unraid Plugin
+
+Install from Community Applications (search 'Podman Manager') or manually install via the .plg URL:
+`https://raw.githubusercontent.com/brdweb/podman-manager/main/unraid-plugin/podman-manager.plg`
+
+### Standalone
+
+1. Build the backend:
+   ```bash
+   cd backend
+   make build
+   ```
+2. Configure your hosts (see Configuration section).
+3. Run the backend:
+   ```bash
+   ./backend/bin/podman-manager --config config.yaml
+   ```
+
+## Configuration
+
+The backend uses a YAML configuration file to define the API server settings and the remote Podman hosts.
+
+```yaml
+# Podman Manager Configuration
+# Copy this to config.yaml and update with your host details.
+
+server:
+  # Port for the REST API server
+  port: 18734
+  # Bind address: 127.0.0.1 for local-only (plugin proxies API through PHP)
+  bind: "127.0.0.1"
+
+ssh:
+  # Path to the SSH private key (ed25519 recommended)
+  key_path: "~/.ssh/id_ed25519"
+  # Connection timeout per host
+  connect_timeout: "5s"
+  # Keepalive interval to prevent SSH drops
+  keepalive_interval: "30s"
+
+# Podman hosts to manage
+hosts:
+  - name: "host-alpha"
+    address: "10.0.0.101"
+    port: 22
+    user: "your-user"
+    # rootful = uses 'sudo podman', rootless = uses 'podman' directly
+    mode: "rootful"
+
+  - name: "host-beta"
+    address: "10.0.0.102"
+    port: 22
+    user: "your-user"
+    mode: "rootful"
+
+  - name: "host-gamma"
+    address: "10.0.0.103"
+    port: 22
+    user: "your-user"
+    mode: "rootless"
+```
+
+### Configuration Sections
+
+- **server**: Defines the API port and bind address. Use `127.0.0.1` if the frontend is on the same machine (like the Unraid plugin).
+- **ssh**: Global SSH settings including the private key path and timeouts.
+- **hosts**: A list of remote Podman hosts.
+  - **name**: Display name in the UI.
+  - **address**: IP or hostname of the remote server.
+  - **port**: SSH port (usually 22).
+  - **user**: SSH username.
+  - **mode**: Either `rootful` (executes commands with `sudo podman`) or `rootless` (executes `podman` directly).
+
+## SSH Setup
+
+Podman Manager connects to remote hosts via SSH. It requires a private key on the backend host and the corresponding public key on each managed host.
+
+### Key Generation
+
+Generate a new SSH key (ED25519 is recommended):
+```bash
+ssh-keygen -t ed25519 -f /path/to/key -N ""
+```
+
+### Key Deployment
+
+Copy the public key to each remote host:
+```bash
+ssh-copy-id -i /path/to/key.pub user@host
+```
+
+For the **Unraid plugin**, keys are typically stored at:
+`/boot/config/plugins/podman-manager/`
+
 ## Project Structure
 
 ```
@@ -66,76 +171,19 @@ podman-manager/
     └── docker-compose.yaml  # Dev environment
 ```
 
-## Quick Start
+## API Reference
 
-### Build the backend
-
-```bash
-cd backend
-make build
-```
-
-### Configure hosts
-
-```bash
-cp backend/configs/config.example.yaml config.yaml
-# Edit config.yaml with your host details
-```
-
-### Run
-
-```bash
-./backend/bin/podman-manager --config config.yaml
-```
-
-The API is available at `http://localhost:18734/api/`.
-
-## Unraid Plugin Workflow
-
-### Local testing
-
-Use the repo directly while iterating:
-
-```bash
-cd unraid-plugin
-make package
-```
-
-That builds the `.txz` package for manual testing on Unraid.
-
-### Release / Community Apps preparation
-
-Community Apps expects the plugin to be installed from a raw `.plg` URL, and that `.plg` should point to a versioned release asset.
-
-This repo is set up for that flow:
-
-```bash
-cd unraid-plugin
-make release VERSION=2026.03.12 GITHUB_REPO=brdweb/podman-manager
-```
-
-That does three things:
-
-1. Builds the versioned `.txz` package
-2. Computes the package SHA256
-3. Generates `unraid-plugin/podman-manager.plg` from `unraid-plugin/podman-manager.plg.in`
-
-On Unraid or Slackware, the plugin package is built with native `makepkg`.
-On non-Slackware development machines, the Makefile falls back to a `tar.xz`
-archive so local packaging, checksum generation, and manifest generation still work.
-For an actual Community Apps release, build the final `.txz` on Unraid/Slackware.
-
-For CA publication later, the intended flow is:
-
-1. Create a tagged GitHub release
-2. Upload the generated `.txz` asset
-3. Commit the generated `unraid-plugin/podman-manager.plg`
-4. Submit the raw `.plg` URL to Community Apps
-
-So the current repo supports both:
-
-- fast local testing now
-- proper CA-compatible releases later
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/health` | Backend health + host connectivity |
+| GET | `/api/hosts` | List configured hosts with status |
+| GET | `/api/hosts/{host}/containers` | List containers on a host |
+| GET | `/api/hosts/{host}/containers/{id}` | Inspect container details |
+| POST | `/api/hosts/{host}/containers/{id}/start` | Start a container |
+| POST | `/api/hosts/{host}/containers/{id}/stop` | Stop a container |
+| POST | `/api/hosts/{host}/containers/{id}/restart` | Restart a container |
+| GET | `/api/hosts/{host}/containers/{id}/logs` | Container logs |
+| GET | `/api/overview` | Aggregated view of all hosts |
 
 ## Web App
 
@@ -158,20 +206,41 @@ docker compose up --build
 
 This starts both the Go backend and the webapp behind nginx on port 8080.
 
-## API Endpoints
+## Development
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/health` | Backend health + host connectivity |
-| GET | `/api/hosts` | List configured hosts with status |
-| GET | `/api/hosts/{host}/containers` | List containers on a host |
-| GET | `/api/hosts/{host}/containers/{id}` | Inspect container details |
-| POST | `/api/hosts/{host}/containers/{id}/start` | Start a container |
-| POST | `/api/hosts/{host}/containers/{id}/stop` | Stop a container |
-| POST | `/api/hosts/{host}/containers/{id}/restart` | Restart a container |
-| GET | `/api/hosts/{host}/containers/{id}/logs` | Container logs |
-| GET | `/api/overview` | Aggregated view of all hosts |
+### Prerequisites
+
+- Go 1.22+
+- Node.js 20+ (for webapp)
+
+### Building
+
+Build the Go backend:
+```bash
+cd backend
+make build
+```
+
+### Plugin Packaging
+
+Package the Unraid plugin for local testing:
+```bash
+cd unraid-plugin
+make package
+```
+
+### Release Building
+
+Generate a versioned release for Community Applications:
+```bash
+cd unraid-plugin
+make release VERSION=YYYY.MM.DD
+```
+
+## Contributing
+
+Issues and pull requests are welcome. Please ensure any changes follow the project's coding style and include appropriate tests.
 
 ## License
 
-GNU General Public License v3.0
+GPL-3.0

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Containers>
+  <Plugin>True</Plugin>
+  <PluginURL>https://raw.githubusercontent.com/brdweb/podman-manager/main/unraid-plugin/podman-manager.plg</PluginURL>
+  <PluginAuthor>brdweb</PluginAuthor>
+  <Beta>True</Beta>
+  <Category>Tools:System</Category>
+  <Name>Podman Manager</Name>
+  <CA>AddOn</CA>
+  <Description>Manage Podman containers across multiple remote hosts from your Unraid dashboard. Connects via SSH to any number of Podman hosts and provides a unified view of all containers with start, stop, and restart controls. Supports rootful and rootless Podman, Quadlet (systemd) services, and Docker Compose stacks. Features inline container details, bulk actions, sortable columns, container logs, and automatic management method detection.</Description>
+  <Support>https://forums.unraid.net/topic/XXXXX-podman-manager-support/</Support>
+  <Icon>https://raw.githubusercontent.com/brdweb/podman-manager/main/images/podman-manager.png</Icon>
+  <Project>https://github.com/brdweb/podman-manager</Project>
+  <MinVer>7.0.0</MinVer>
+  <ExtraSearchTerms>podman container management remote ssh multi-host quadlet compose systemd</ExtraSearchTerms>
+</Containers>
