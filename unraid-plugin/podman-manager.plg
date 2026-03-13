@@ -26,7 +26,7 @@
 
 <FILE Name="&pluginLOC;/&name;-&version;-x86_64-1.txz" Run="upgradepkg --install-new">
   <URL>https://github.com/&github;/releases/download/v&version;/&name;-&version;-x86_64-1.txz</URL>
-  <SHA256>91a57a06c18345f363ccdb2b2f7553e45fc13cb8cbd7f4da18446c295e246c80</SHA256>
+  <SHA256>ecd1dc6fe37b14f5ca9feaf21891b19023034a1f8f09d5a08d643167b60fade2</SHA256>
 </FILE>
 
 <FILE Run="/bin/bash">
