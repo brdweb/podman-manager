@@ -4,7 +4,7 @@
 server:
   # Port for the REST API server
   port: 18734
-  # Bind address: 127.0.0.1 for local-only (Unraid plugin), 0.0.0.0 for container
+  # Bind address: 127.0.0.1 for local-only (plugin proxies API through PHP)
   bind: "127.0.0.1"
 
 ssh:

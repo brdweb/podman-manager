@@ -58,7 +58,96 @@ func (c *Client) ListContainers(ctx context.Context, hostName string) ([]Contain
 		containers = append(containers, r.toContainer(hostName))
 	}
 
+	inactive := c.listInactiveQuadletUnits(ctx, hostName, hostCfg, containers)
+	containers = append(containers, inactive...)
+
 	return containers, nil
+}
+
+// listInactiveQuadletUnits discovers Quadlet .container files on the host,
+// checks which corresponding systemd services are inactive, and returns
+// synthetic Container entries for stopped Quadlet containers.
+// Quadlet containers are ephemeral (removed on stop), so podman ps -a
+// won't show them when stopped.
+func (c *Client) listInactiveQuadletUnits(ctx context.Context, hostName string, hostCfg config.HostConfig, running []Container) []Container {
+	conn, err := c.pool.GetConnection(hostName)
+	if err != nil {
+		return nil
+	}
+
+	var quadletDir, systemctlPrefix, envSetup string
+	if hostCfg.IsRootful() {
+		quadletDir = "/etc/containers/systemd"
+		systemctlPrefix = "sudo systemctl"
+		envSetup = ""
+	} else {
+		quadletDir = "$HOME/.config/containers/systemd"
+		systemctlPrefix = "systemctl --user"
+		envSetup = "export XDG_RUNTIME_DIR=/run/user/$(id -u); "
+	}
+
+	cmd := fmt.Sprintf(
+		`%sfor f in %s/*.container; do `+
+			`[ -f "$f" ] || continue; `+
+			`unit=$(basename "$f" .container).service; `+
+			`state=$(%s is-active "$unit" 2>/dev/null); `+
+			`image=$(grep -i "^Image=" "$f" 2>/dev/null | head -1 | cut -d= -f2-); `+
+			`cname=$(grep -i "^ContainerName=" "$f" 2>/dev/null | head -1 | cut -d= -f2-); `+
+			`echo "$unit|$state|$image|$cname"; `+
+			`done`,
+		envSetup, quadletDir, systemctlPrefix,
+	)
+
+	result, err := conn.Run(ctx, cmd)
+	if err != nil || result.ExitCode != 0 {
+		return nil
+	}
+
+	existing := make(map[string]bool)
+	for _, ct := range running {
+		existing[ct.Name] = true
+	}
+
+	var inactive []Container
+	for _, line := range strings.Split(strings.TrimSpace(result.Stdout), "\n") {
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "|", 4)
+		if len(parts) < 4 {
+			continue
+		}
+
+		unit := parts[0]
+		state := parts[1]
+		image := parts[2]
+		cname := parts[3]
+
+		if state == "active" || state == "activating" {
+			continue
+		}
+
+		if cname == "" {
+			cname = strings.TrimSuffix(unit, ".service")
+		}
+
+		if existing[cname] {
+			continue
+		}
+
+		inactive = append(inactive, Container{
+			ID:          "quadlet-" + strings.TrimSuffix(unit, ".service"),
+			Name:        cname,
+			Image:       image,
+			State:       "exited",
+			Status:      "Stopped (Quadlet)",
+			Manager:     "quadlet",
+			SystemdUnit: unit,
+			Host:        hostName,
+		})
+	}
+
+	return inactive
 }
 
 func (c *Client) InspectContainer(ctx context.Context, hostName, containerID string) (*ContainerDetail, error) {
@@ -111,7 +200,19 @@ func (c *Client) containerAction(ctx context.Context, hostName, containerID, act
 
 	hostCfg, _ := c.pool.HostConfig(hostName)
 	safeID := sanitizeID(containerID)
-	cmd := fmt.Sprintf("%s %s %s", c.podmanCmd(hostCfg), action, safeID)
+
+	var cmd string
+	if strings.HasPrefix(safeID, "quadlet-") {
+		unit := strings.TrimPrefix(safeID, "quadlet-") + ".service"
+		cmd = c.systemctlCmd(hostCfg, action, unit)
+	} else {
+		unit := c.getSystemdUnit(ctx, hostName, hostCfg, safeID)
+		if unit != "" {
+			cmd = c.systemctlCmd(hostCfg, action, unit)
+		} else {
+			cmd = fmt.Sprintf("%s %s %s", c.podmanCmd(hostCfg), action, safeID)
+		}
+	}
 
 	result, err := conn.Run(ctx, cmd)
 	if err != nil {
@@ -129,6 +230,32 @@ func (c *Client) containerAction(ctx context.Context, hostName, containerID, act
 		Success: true,
 		Message: fmt.Sprintf("Container %s %sed successfully", safeID, action),
 	}, nil
+}
+
+func (c *Client) getSystemdUnit(ctx context.Context, hostName string, hostCfg config.HostConfig, containerID string) string {
+	conn, err := c.pool.GetConnection(hostName)
+	if err != nil {
+		return ""
+	}
+
+	cmd := fmt.Sprintf(`%s inspect --format '{{index .Config.Labels "PODMAN_SYSTEMD_UNIT"}}' %s`, c.podmanCmd(hostCfg), containerID)
+	result, err := conn.Run(ctx, cmd)
+	if err != nil {
+		return ""
+	}
+
+	unit := strings.TrimSpace(result.Stdout)
+	if unit == "" || unit == "<no value>" {
+		return ""
+	}
+	return unit
+}
+
+func (c *Client) systemctlCmd(host config.HostConfig, action, unit string) string {
+	if host.IsRootful() {
+		return fmt.Sprintf("sudo systemctl %s %s", action, unit)
+	}
+	return fmt.Sprintf("XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user %s %s", action, unit)
 }
 
 func (c *Client) ContainerLogs(ctx context.Context, hostName, containerID string, tail int) (string, error) {
@@ -276,6 +403,15 @@ func (p *podmanPSEntry) toContainer(hostName string) Container {
 	ct.Ports = parsePorts(p.Ports)
 	ct.Networks = parseNetworkNames(p.Networks)
 	ct.Mounts = parseMountStrings(p.Mounts)
+
+	if unit, ok := p.Labels["PODMAN_SYSTEMD_UNIT"]; ok && unit != "" {
+		ct.Manager = "quadlet"
+		ct.SystemdUnit = unit
+	} else if _, ok := p.Labels["com.docker.compose.project"]; ok {
+		ct.Manager = "compose"
+	} else {
+		ct.Manager = "standalone"
+	}
 
 	return ct
 }
