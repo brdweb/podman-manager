@@ -92,8 +92,13 @@ After editing, restart the backend for changes to take effect.
 <pre class="podman-config-preview"><?=$configContent?></pre>
 
 <input type="button" value="_(Edit Config)_" onclick="podmanEditConfig()">
+
+<div id="podman-editor-dialog" style="display:none">
+  <div id="podman-editor" style="position:absolute;top:0;bottom:0;left:0;right:0"></div>
+</div>
 <?endif;?>
 
+<script src="<?autov('/webGui/javascript/ace/ace.js')?>"></script>
 <script>
 function podmanBackendAction(action) {
   $.post('/plugins/podman-manager/include/Events.php', {
@@ -132,10 +137,52 @@ function podmanGenerateKey() {
 
 function podmanEditConfig() {
   var configPath = '<?=$configFile?>';
-  if (typeof openEditor === 'function') {
-    openEditor(configPath);
-  } else {
-    window.open('/Tools/EditFile?f=' + encodeURIComponent(configPath), '_blank');
-  }
+  var $dlg = $('#podman-editor-dialog');
+  $dlg.dialog({
+    title: 'config.yaml',
+    width: Math.min(window.innerWidth - 40, 900),
+    height: Math.min(window.innerHeight - 40, 700),
+    modal: true,
+    resizable: true,
+    draggable: true,
+    buttons: {
+      "_(Save)_": function() {
+        $.post('/webGui/include/Control.php', {
+          mode: 'save',
+          file: encodeURIComponent(configPath),
+          data: encodeURIComponent(podmanEditor.session.getValue())
+        }, function() {
+          $dlg.dialog('close');
+          location.reload();
+        });
+      },
+      "_(Cancel)_": function() {
+        $dlg.dialog('close');
+      }
+    },
+    open: function() {
+      podmanEditor = ace.edit('podman-editor');
+      podmanEditor.session.setMode('ace/mode/yaml');
+      podmanEditor.setOptions({
+        showPrintMargin: false,
+        fontSize: 13,
+        fontFamily: 'bitstream',
+        theme: 'ace/theme/<?if (in_array($theme,["black","gray"])):?>tomorrow_night<?else:?>tomorrow<?endif;?>'
+      });
+      $.post('/webGui/include/Control.php', {
+        mode: 'edit',
+        file: encodeURIComponent(configPath)
+      }, function(data) {
+        podmanEditor.session.setValue(data);
+        setTimeout(function(){ podmanEditor.resize(); }, 50);
+      });
+    },
+    close: function() {
+      if (podmanEditor) { podmanEditor.destroy(); podmanEditor = null; }
+      $dlg.dialog('destroy');
+    }
+  });
 }
+var podmanEditor = null;
 </script>
+
