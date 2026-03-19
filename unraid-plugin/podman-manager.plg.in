@@ -16,9 +16,9 @@
 
 <CHANGES>
 ### @VERSION@
-- Fix dashboard tile placement so it renders inside a native Unraid widget box
-- Fix dashboard tile actions to target containers by ID for reliable start, stop, and restart operations
-- Keep dashboard summary counts and quick actions available from the main Dashboard page
+- Define the Podman dashboard tile through Unraid's native custom tile registration flow
+- Route Quadlet dashboard actions through systemd service targets for reliable control
+- Keep dashboard quick actions and summary counts available inside the standard widget layout
 </CHANGES>
 
 <FILE Name="&pluginLOC;/&name;-&version;-x86_64-1.txz" Run="upgradepkg --install-new">
