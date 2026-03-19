@@ -1,0 +1,17 @@
+[Unit]
+Description=Podman Manager webapp
+Requires=podman-manager-backend.service
+After=podman-manager-backend.service
+
+[Container]
+ContainerName=podman-manager-webapp
+Image=ghcr.io/brdweb/podman-manager-webapp:latest
+Pull=newer
+Network=podman-manager.network
+PublishPort=18780:80
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

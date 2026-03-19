@@ -1,0 +1,22 @@
+server:
+  port: 18734
+  bind: "0.0.0.0"
+
+ssh:
+  key_path: "/root/.ssh/id_ed25519"
+  connect_timeout: "5s"
+  keepalive_interval: "30s"
+
+hosts:
+  - name: yoda-podman
+    address: "192.168.40.60"
+    user: "brdweb"
+    mode: "rootful"
+  - name: xwing-podman
+    address: "192.168.40.80"
+    user: "brdweb"
+    mode: "rootful"
+  - name: obiwan-podman
+    address: "192.168.40.70"
+    user: "brdweb"
+    mode: "rootful"

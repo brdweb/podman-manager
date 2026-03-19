@@ -1,0 +1,19 @@
+[Unit]
+Description=Podman Manager backend
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+ContainerName=podman-manager-backend
+Image=ghcr.io/brdweb/podman-manager-backend:latest
+Pull=newer
+Network=podman-manager.network
+Volume=/etc/podman-manager/config.yaml:/etc/podman-manager/config.yaml:ro
+Volume=/etc/podman-manager/id_ed25519:/root/.ssh/id_ed25519:ro
+Exec=--config /etc/podman-manager/config.yaml
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
