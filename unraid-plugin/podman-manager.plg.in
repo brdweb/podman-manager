@@ -16,10 +16,9 @@
 
 <CHANGES>
 ### @VERSION@
-- Add a Podman dashboard tile to the Unraid dashboard
-- Show running and total container counts across managed hosts
-- Add quick container start, stop, and restart actions from the tile
-- Refresh dashboard tile status through the existing API proxy
+- Fix dashboard tile placement so it renders inside a native Unraid widget box
+- Fix dashboard tile actions to target containers by ID for reliable start, stop, and restart operations
+- Keep dashboard summary counts and quick actions available from the main Dashboard page
 </CHANGES>
 
 <FILE Name="&pluginLOC;/&name;-&version;-x86_64-1.txz" Run="upgradepkg --install-new">
