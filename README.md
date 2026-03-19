@@ -63,15 +63,15 @@ Install from Community Applications (search 'Podman Manager') or manually instal
 
 ### Standalone
 
-1. Build the backend:
+1. Configure your hosts (see Configuration section) and place the file at `webapp/config.yaml`.
+2. Start the standalone container:
    ```bash
-   cd backend
-   make build
+   cd webapp
+   docker compose up --build
    ```
-2. Configure your hosts (see Configuration section).
-3. Run the backend:
+3. Open the UI:
    ```bash
-   ./backend/bin/podman-manager --config config.yaml
+   http://localhost:8080
    ```
 
 ## Configuration
@@ -204,7 +204,7 @@ cd webapp
 docker compose up --build
 ```
 
-This starts both the Go backend and the webapp behind nginx on port 8080.
+This builds and starts a single container image that runs both the Go backend and nginx-served webapp on port 8080.
 
 ## Development
 
@@ -215,10 +215,9 @@ This starts both the Go backend and the webapp behind nginx on port 8080.
 
 ### Building
 
-Build the Go backend:
+Build the standalone container image:
 ```bash
-cd backend
-make build
+docker build -f webapp/Dockerfile -t podman-manager .
 ```
 
 ### Plugin Packaging

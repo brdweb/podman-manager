@@ -1,0 +1,18 @@
+[Unit]
+Description=Podman Manager
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+ContainerName=podman-manager
+Image=ghcr.io/brdweb/podman-manager:latest
+Pull=newer
+Volume=/etc/podman-manager/config.yaml:/etc/podman-manager/config.yaml
+Volume=/etc/podman-manager/id_ed25519:/root/.ssh/id_ed25519:ro
+PublishPort=18780:80
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
