@@ -15,6 +15,15 @@ ssh:
   # Keepalive interval to prevent SSH drops
   keepalive_interval: "30s"
 
+# Optional login for the standalone web application.
+# Generate password_hash with:
+#   htpasswd -bnBC 10 "" your-password | tr -d ':\n'
+auth:
+  enabled: false
+  username: "admin"
+  password_hash: ""
+  session_ttl: "12h"
+
 # Podman hosts to manage
 hosts:
   - name: "host-alpha"

@@ -1,9 +1,11 @@
 package podman
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -61,7 +63,145 @@ func (c *Client) ListContainers(ctx context.Context, hostName string) ([]Contain
 	inactive := c.listInactiveQuadletUnits(ctx, hostName, hostCfg, containers)
 	containers = append(containers, inactive...)
 
+	stats, err := c.ListContainerStats(ctx, hostName)
+	if err == nil {
+		for i := range containers {
+			if stat, ok := stats[containers[i].ID]; ok {
+				containers[i].Stats = stat
+				continue
+			}
+			if stat, ok := stats[containers[i].Name]; ok {
+				containers[i].Stats = stat
+			}
+		}
+	}
+
 	return containers, nil
+}
+
+func (c *Client) ListContainerStats(ctx context.Context, hostName string) (map[string]*ContainerStats, error) {
+	conn, err := c.pool.GetConnection(hostName)
+	if err != nil {
+		return nil, err
+	}
+
+	hostCfg, _ := c.pool.HostConfig(hostName)
+	cmd := fmt.Sprintf(`%s stats --all --no-stream --format "{{json .}}"`, c.podmanCmd(hostCfg))
+
+	result, err := conn.Run(ctx, cmd)
+	if err != nil {
+		return nil, fmt.Errorf("getting container stats on %s: %w", hostName, err)
+	}
+	if result.ExitCode != 0 {
+		return nil, fmt.Errorf("podman stats failed on %s: %s", hostName, strings.TrimSpace(result.Stderr))
+	}
+
+	stats := make(map[string]*ContainerStats)
+	scanner := bufio.NewScanner(strings.NewReader(result.Stdout))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+
+		var raw map[string]any
+		if err := json.Unmarshal([]byte(line), &raw); err != nil {
+			continue
+		}
+
+		stat := parseContainerStats(raw)
+		if stat == nil {
+			continue
+		}
+
+		if id := firstString(raw, "ID", "ContainerID", "Container"); id != "" {
+			stats[id] = stat
+		}
+		if name := firstString(raw, "Name"); name != "" {
+			stats[name] = stat
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("reading container stats on %s: %w", hostName, err)
+	}
+
+	return stats, nil
+}
+
+func (c *Client) HostSystemInfo(ctx context.Context, hostName string) (*HostSystemInfo, error) {
+	conn, err := c.pool.GetConnection(hostName)
+	if err != nil {
+		return nil, err
+	}
+
+	cmd := `sh -lc 'hostname=$(hostname 2>/dev/null || true); ` +
+		`os=$(awk -F= '\''/^PRETTY_NAME=/{gsub(/"/,"",$2); print $2}'\'' /etc/os-release 2>/dev/null || true); ` +
+		`kernel=$(uname -sr 2>/dev/null || true); ` +
+		`uptime=$(cut -d. -f1 /proc/uptime 2>/dev/null || echo 0); ` +
+		`mem_total=$(awk '\''/MemTotal/ {print $2}'\'' /proc/meminfo 2>/dev/null || echo 0); ` +
+		`mem_avail=$(awk '\''/MemAvailable/ {print $2}'\'' /proc/meminfo 2>/dev/null || echo 0); ` +
+		`load=$(cut -d\" \" -f1-3 /proc/loadavg 2>/dev/null || echo \"0 0 0\"); ` +
+		`cores=$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 0); ` +
+		`disk=$(df -B1 / 2>/dev/null | awk '\''NR==2 {print $2\"|\"$3\"|\"$4}'\'' || true); ` +
+		`printf \"hostname=%s\nos=%s\nkernel=%s\nuptime=%s\nmem_total_kb=%s\nmem_avail_kb=%s\nload=%s\ncpu_cores=%s\ndisk=%s\n\" \"$hostname\" \"$os\" \"$kernel\" \"$uptime\" \"$mem_total\" \"$mem_avail\" \"$load\" \"$cores\" \"$disk\"'`
+
+	result, err := conn.Run(ctx, cmd)
+	if err != nil {
+		return nil, fmt.Errorf("getting system info on %s: %w", hostName, err)
+	}
+	if result.ExitCode != 0 {
+		return nil, fmt.Errorf("system info command failed on %s: %s", hostName, strings.TrimSpace(result.Stderr))
+	}
+
+	info := &HostSystemInfo{}
+	for _, line := range strings.Split(strings.TrimSpace(result.Stdout), "\n") {
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+
+		key := parts[0]
+		value := parts[1]
+		switch key {
+		case "hostname":
+			info.Hostname = value
+		case "os":
+			info.OS = value
+		case "kernel":
+			info.Kernel = value
+		case "uptime":
+			info.UptimeSeconds = mustParseInt64(value)
+		case "mem_total_kb":
+			info.MemoryTotalBytes = uint64(mustParseInt64(value) * 1024)
+		case "mem_avail_kb":
+			available := uint64(mustParseInt64(value) * 1024)
+			if info.MemoryTotalBytes >= available {
+				info.MemoryUsedBytes = info.MemoryTotalBytes - available
+			}
+		case "load":
+			loadParts := strings.Fields(value)
+			if len(loadParts) >= 3 {
+				info.Load1 = mustParseFloat(loadParts[0])
+				info.Load5 = mustParseFloat(loadParts[1])
+				info.Load15 = mustParseFloat(loadParts[2])
+			}
+		case "cpu_cores":
+			info.CPUCores = int(mustParseInt64(value))
+		case "disk":
+			diskParts := strings.Split(value, "|")
+			if len(diskParts) >= 3 {
+				info.DiskTotalBytes = uint64(mustParseInt64(diskParts[0]))
+				info.DiskUsedBytes = uint64(mustParseInt64(diskParts[1]))
+				info.DiskFreeBytes = uint64(mustParseInt64(diskParts[2]))
+			}
+		}
+	}
+
+	return info, nil
 }
 
 // listInactiveQuadletUnits discovers Quadlet .container files on the host,
@@ -177,6 +317,14 @@ func (c *Client) InspectContainer(ctx context.Context, hostName, containerID str
 	}
 
 	detail := raw[0].toContainerDetail(hostName)
+	stats, err := c.ListContainerStats(ctx, hostName)
+	if err == nil {
+		if stat, ok := stats[detail.ID]; ok {
+			detail.Stats = stat
+		} else if stat, ok := stats[detail.Name]; ok {
+			detail.Stats = stat
+		}
+	}
 	return &detail, nil
 }
 
@@ -315,6 +463,7 @@ func (c *Client) hostStatus(ctx context.Context, hostName string) HostStatus {
 	hs := HostStatus{
 		Name:    hostName,
 		Address: hostCfg.Address,
+		Mode:    hostCfg.Mode,
 	}
 
 	latency, err := c.pool.Ping(hostName)
@@ -333,6 +482,9 @@ func (c *Client) hostStatus(ctx context.Context, hostName string) HostStatus {
 	}
 
 	hs.Status = "online"
+	if info, err := c.HostSystemInfo(ctx, hostName); err == nil {
+		hs.System = info
+	}
 	hs.Containers = containers
 	hs.ContainerCount.Total = len(containers)
 	for _, ct := range containers {
@@ -352,6 +504,156 @@ func (c *Client) HostNames() []string {
 
 func (c *Client) Pool() *SSHPool {
 	return c.pool
+}
+
+func parseContainerStats(raw map[string]any) *ContainerStats {
+	stat := &ContainerStats{}
+
+	if cpu := firstString(raw, "CPU", "CPUPerc"); cpu != "" {
+		stat.CPUPercent = parsePercent(cpu)
+	}
+
+	if memUsage := firstString(raw, "MemUsage", "MemUsageBytes"); memUsage != "" {
+		used, limit := parseUsagePair(memUsage)
+		stat.MemoryUsageBytes = used
+		if limit > 0 {
+			stat.MemoryLimitBytes = limit
+		}
+	}
+
+	if stat.MemoryUsageBytes == 0 {
+		stat.MemoryUsageBytes = parseHumanBytes(firstString(raw, "Usage", "MemUsageBytes"))
+	}
+	if stat.MemoryLimitBytes == 0 {
+		stat.MemoryLimitBytes = parseHumanBytes(firstString(raw, "MemLimit"))
+	}
+	if memPercent := firstString(raw, "MemPerc", "MemoryPercent"); memPercent != "" {
+		stat.MemoryPercent = parsePercent(memPercent)
+	} else if stat.MemoryUsageBytes > 0 && stat.MemoryLimitBytes > 0 {
+		stat.MemoryPercent = (float64(stat.MemoryUsageBytes) / float64(stat.MemoryLimitBytes)) * 100
+	}
+
+	stat.PIDs = int(mustParseInt64(firstString(raw, "PIDs", "PIDS")))
+
+	if netIO := firstString(raw, "NetIO", "NetworkIO"); netIO != "" {
+		stat.NetworkInputBytes, stat.NetworkOutputBytes = parseUsagePair(netIO)
+	}
+	if blockIO := firstString(raw, "BlockIO"); blockIO != "" {
+		stat.BlockInputBytes, stat.BlockOutputBytes = parseUsagePair(blockIO)
+	}
+
+	if stat.CPUPercent == 0 &&
+		stat.MemoryUsageBytes == 0 &&
+		stat.MemoryLimitBytes == 0 &&
+		stat.MemoryPercent == 0 &&
+		stat.PIDs == 0 &&
+		stat.NetworkInputBytes == 0 &&
+		stat.NetworkOutputBytes == 0 &&
+		stat.BlockInputBytes == 0 &&
+		stat.BlockOutputBytes == 0 {
+		return nil
+	}
+
+	return stat
+}
+
+func firstString(raw map[string]any, keys ...string) string {
+	for _, key := range keys {
+		if value, ok := raw[key]; ok {
+			switch v := value.(type) {
+			case string:
+				return strings.TrimSpace(v)
+			case float64:
+				return strconv.FormatFloat(v, 'f', -1, 64)
+			}
+		}
+	}
+	return ""
+}
+
+func parseUsagePair(value string) (uint64, uint64) {
+	parts := strings.Split(value, "/")
+	if len(parts) >= 2 {
+		return parseHumanBytes(parts[0]), parseHumanBytes(parts[1])
+	}
+	parts = strings.Split(value, "|")
+	if len(parts) >= 2 {
+		return parseHumanBytes(parts[0]), parseHumanBytes(parts[1])
+	}
+	return parseHumanBytes(value), 0
+}
+
+func parsePercent(value string) float64 {
+	value = strings.TrimSpace(strings.TrimSuffix(value, "%"))
+	return mustParseFloat(value)
+}
+
+func parseHumanBytes(value string) uint64 {
+	cleaned := strings.ToLower(strings.TrimSpace(value))
+	if cleaned == "" || cleaned == "n/a" || cleaned == "--" {
+		return 0
+	}
+
+	cleaned = strings.ReplaceAll(cleaned, "i", "")
+	cleaned = strings.ReplaceAll(cleaned, "b", "")
+	cleaned = strings.ReplaceAll(cleaned, "bytes", "")
+	cleaned = strings.TrimSpace(cleaned)
+
+	end := 0
+	for end < len(cleaned) && (cleaned[end] == '.' || cleaned[end] == '-' || (cleaned[end] >= '0' && cleaned[end] <= '9')) {
+		end++
+	}
+	if end == 0 {
+		return 0
+	}
+
+	number := mustParseFloat(cleaned[:end])
+	unit := strings.TrimSpace(cleaned[end:])
+	multiplier := float64(1)
+	switch unit {
+	case "", "byte":
+		multiplier = 1
+	case "k", "kb":
+		multiplier = 1000
+	case "m", "mb":
+		multiplier = 1000 * 1000
+	case "g", "gb":
+		multiplier = 1000 * 1000 * 1000
+	case "t", "tb":
+		multiplier = 1000 * 1000 * 1000 * 1000
+	case "ki":
+		multiplier = 1024
+	case "mi":
+		multiplier = 1024 * 1024
+	case "gi":
+		multiplier = 1024 * 1024 * 1024
+	case "ti":
+		multiplier = 1024 * 1024 * 1024 * 1024
+	}
+
+	return uint64(math.Round(number * multiplier))
+}
+
+func mustParseInt64(value string) int64 {
+	if value == "" {
+		return 0
+	}
+	parsed, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+	if err != nil {
+		return 0
+	}
+	return parsed
+}
+
+func mustParseFloat(value string) float64 {
+	if value == "" {
+		return 0
+	}
+	parsed, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
+	if err != nil {
+		return 0
+	}
+	return parsed
 }
 
 // sanitizeID strips anything that isn't alphanumeric, dash, underscore, or dot

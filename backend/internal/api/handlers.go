@@ -10,11 +10,12 @@ import (
 )
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	hostNames := s.client.HostNames()
+	client := s.clientSnapshot()
+	hostNames := client.HostNames()
 	statuses := make(map[string]string)
 
 	for _, name := range hostNames {
-		latency, err := s.client.Pool().Ping(name)
+		latency, err := client.Pool().Ping(name)
 		if err != nil {
 			statuses[name] = "offline"
 		} else {
@@ -29,18 +30,19 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListHosts(w http.ResponseWriter, r *http.Request) {
-	hostNames := s.client.HostNames()
+	client := s.clientSnapshot()
+	hostNames := client.HostNames()
 	hosts := make([]map[string]interface{}, 0, len(hostNames))
 
 	for _, name := range hostNames {
-		cfg, _ := s.client.Pool().HostConfig(name)
+		cfg, _ := client.Pool().HostConfig(name)
 		h := map[string]interface{}{
 			"name":    cfg.Name,
 			"address": cfg.Address,
 			"mode":    cfg.Mode,
 		}
 
-		latency, err := s.client.Pool().Ping(name)
+		latency, err := client.Pool().Ping(name)
 		if err != nil {
 			h["status"] = "offline"
 			h["error"] = err.Error()
@@ -58,7 +60,7 @@ func (s *Server) handleListHosts(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleListContainers(w http.ResponseWriter, r *http.Request) {
 	hostName := r.PathValue("host")
 
-	containers, err := s.client.ListContainers(r.Context(), hostName)
+	containers, err := s.clientSnapshot().ListContainers(r.Context(), hostName)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
@@ -71,7 +73,7 @@ func (s *Server) handleInspectContainer(w http.ResponseWriter, r *http.Request) 
 	hostName := r.PathValue("host")
 	containerID := r.PathValue("id")
 
-	detail, err := s.client.InspectContainer(r.Context(), hostName, containerID)
+	detail, err := s.clientSnapshot().InspectContainer(r.Context(), hostName, containerID)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
@@ -81,15 +83,15 @@ func (s *Server) handleInspectContainer(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) handleStartContainer(w http.ResponseWriter, r *http.Request) {
-	s.handleContainerAction(w, r, s.client.StartContainer)
+	s.handleContainerAction(w, r, s.clientSnapshot().StartContainer)
 }
 
 func (s *Server) handleStopContainer(w http.ResponseWriter, r *http.Request) {
-	s.handleContainerAction(w, r, s.client.StopContainer)
+	s.handleContainerAction(w, r, s.clientSnapshot().StopContainer)
 }
 
 func (s *Server) handleRestartContainer(w http.ResponseWriter, r *http.Request) {
-	s.handleContainerAction(w, r, s.client.RestartContainer)
+	s.handleContainerAction(w, r, s.clientSnapshot().RestartContainer)
 }
 
 type containerActionFunc func(ctx context.Context, hostName, containerID string) (*podman.ActionResult, error)
@@ -122,7 +124,7 @@ func (s *Server) handleContainerLogs(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	logs, err := s.client.ContainerLogs(r.Context(), hostName, containerID, tail)
+	logs, err := s.clientSnapshot().ContainerLogs(r.Context(), hostName, containerID, tail)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
@@ -132,6 +134,15 @@ func (s *Server) handleContainerLogs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
-	overview := s.client.Overview(r.Context())
+	overview := s.clientSnapshot().Overview(r.Context())
 	writeJSON(w, http.StatusOK, overview)
+}
+
+func (s *Server) handleAllContainers(w http.ResponseWriter, r *http.Request) {
+	overview := s.clientSnapshot().Overview(r.Context())
+	all := make([]podman.Container, 0)
+	for _, host := range overview.Hosts {
+		all = append(all, host.Containers...)
+	}
+	writeJSON(w, http.StatusOK, all)
 }

@@ -10,6 +10,10 @@ export function getContainers(host: string): Promise<Container[]> {
   return get<Container[]>(`/api/hosts/${encodeURIComponent(host)}/containers`);
 }
 
+export function getAllContainers(): Promise<Container[]> {
+  return get<Container[]>('/api/containers');
+}
+
 export function getContainer(
   host: string,
   id: string

@@ -7,6 +7,12 @@ ssh:
   connect_timeout: "5s"
   keepalive_interval: "30s"
 
+auth:
+  enabled: false
+  username: "admin"
+  password_hash: ""
+  session_ttl: "12h"
+
 hosts:
   - name: yoda-podman
     address: "192.168.40.60"
@@ -19,4 +25,4 @@ hosts:
   - name: obiwan-podman
     address: "192.168.40.70"
     user: "brdweb"
-    mode: "rootful"
+    mode: "rootless"

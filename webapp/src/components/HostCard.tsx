@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import type { HostStatus } from '../types/api';
 import { StatusBadge } from './StatusBadge';
+import { formatBytes, formatUptime } from '../lib/format';
 
 interface HostCardProps {
   host: HostStatus;
@@ -24,6 +25,23 @@ export function HostCard({ host }: HostCardProps) {
           <Stat label="Total" value={host.container_count.total} />
           <Stat label="Running" value={host.container_count.running} color="text-emerald-400" />
           <Stat label="Stopped" value={host.container_count.stopped} color="text-zinc-400" />
+        </div>
+      )}
+
+      {host.system && (
+        <div className="mt-4 grid gap-2 border-t border-zinc-800 pt-4 text-xs text-zinc-500">
+          <p>{host.system.os || 'Unknown OS'}</p>
+          <p>
+            CPU {host.system.cpu_cores ?? '-'} cores
+            {host.system.load_1 !== undefined ? ` • load ${host.system.load_1.toFixed(2)}` : ''}
+          </p>
+          <p>
+            Memory{' '}
+            {host.system.memory_used_bytes
+              ? `${formatBytes(host.system.memory_used_bytes)} / ${formatBytes(host.system.memory_total_bytes)}`
+              : '-'}
+          </p>
+          <p>Uptime {formatUptime(host.system.uptime_seconds)}</p>
         </div>
       )}
 

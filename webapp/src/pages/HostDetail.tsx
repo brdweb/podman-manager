@@ -1,14 +1,19 @@
 import { useParams, Link } from 'react-router-dom';
 import { useContainers } from '../hooks/useContainers';
-import { ContainerRow } from '../components/ContainerRow';
+import { useOverview } from '../hooks/useHosts';
+import { ContainerTable } from '../components/ContainerTable';
+import { HostSystemCard } from '../components/HostSystemCard';
 
 export function HostDetail() {
   const { hostName } = useParams<{ hostName: string }>();
   const { data: containers, isLoading, error } = useContainers(hostName ?? '');
+  const { data: overview } = useOverview();
 
   if (!hostName) {
     return <p className="text-red-400">No host specified</p>;
   }
+
+  const host = overview?.hosts.find((entry) => entry.name === hostName);
 
   return (
     <div>
@@ -19,6 +24,12 @@ export function HostDetail() {
         <span className="text-zinc-700">/</span>
         <h1 className="text-2xl font-bold">{hostName}</h1>
       </div>
+
+      {host && (
+        <div className="mb-6">
+          <HostSystemCard host={host} />
+        </div>
+      )}
 
       {isLoading && (
         <div className="animate-pulse space-y-3">
@@ -35,31 +46,8 @@ export function HostDetail() {
         </div>
       )}
 
-      {containers && containers.length === 0 && (
-        <p className="text-zinc-500 text-center py-12">
-          No containers found on this host.
-        </p>
-      )}
-
-      {containers && containers.length > 0 && (
-        <div className="overflow-x-auto rounded-xl border border-zinc-800">
-          <table className="w-full text-left">
-            <thead className="bg-zinc-900 text-zinc-400 text-sm">
-              <tr>
-                <th className="px-4 py-3 font-medium">Name</th>
-                <th className="px-4 py-3 font-medium">Image</th>
-                <th className="px-4 py-3 font-medium">State</th>
-                <th className="px-4 py-3 font-medium">Ports</th>
-                <th className="px-4 py-3 font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {containers.map((c) => (
-                <ContainerRow key={c.id} container={c} />
-              ))}
-            </tbody>
-          </table>
-        </div>
+      {containers && (
+        <ContainerTable containers={containers} emptyMessage="No containers found on this host." />
       )}
     </div>
   );

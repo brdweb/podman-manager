@@ -1,9 +1,13 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Layout } from './components/Layout';
 import { Dashboard } from './pages/Dashboard';
 import { HostList } from './pages/HostList';
 import { HostDetail } from './pages/HostDetail';
+import { ContainersPage } from './pages/ContainersPage';
+import { AdminPage } from './pages/AdminPage';
+import { LoginPage } from './pages/LoginPage';
+import { useSession } from './hooks/useAuth';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -19,13 +23,47 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <Routes>
-          <Route element={<Layout />}>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/hosts" element={<HostList />} />
-            <Route path="/hosts/:hostName" element={<HostDetail />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route element={<ProtectedApp />}>
+            <Route element={<Layout />}>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/containers" element={<ContainersPage />} />
+              <Route path="/hosts" element={<HostList />} />
+              <Route path="/hosts/:hostName" element={<HostDetail />} />
+              <Route path="/admin" element={<AdminPage />} />
+            </Route>
           </Route>
         </Routes>
       </BrowserRouter>
     </QueryClientProvider>
   );
+}
+
+function ProtectedApp() {
+  const { data: session, isLoading, error } = useSession();
+  const location = useLocation();
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-zinc-950 text-zinc-300">
+        Checking session...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-zinc-950 px-6 text-center text-zinc-300">
+        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-6">
+          Failed to contact the Podman Manager API.
+        </div>
+      </div>
+    );
+  }
+
+  if (session?.enabled && !session.authenticated) {
+    return <Navigate to="/login" replace state={{ from: location }} />;
+  }
+
+  return <Outlet />;
 }

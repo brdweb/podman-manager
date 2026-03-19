@@ -1,5 +1,7 @@
+import { Link } from 'react-router-dom';
 import { useOverview } from '../hooks/useHosts';
 import { HostCard } from '../components/HostCard';
+import { formatBytes } from '../lib/format';
 
 export function Dashboard() {
   const { data, isLoading, error } = useOverview();
@@ -21,15 +23,21 @@ export function Dashboard() {
   const totalContainers = hosts.reduce((sum, h) => sum + h.container_count.total, 0);
   const totalRunning = hosts.reduce((sum, h) => sum + h.container_count.running, 0);
   const onlineHosts = hosts.filter((h) => h.status === 'online').length;
+  const memoryUsed = hosts.reduce((sum, h) => sum + (h.system?.memory_used_bytes ?? 0), 0);
+  const memoryTotal = hosts.reduce((sum, h) => sum + (h.system?.memory_total_bytes ?? 0), 0);
 
   return (
     <div>
       <h1 className="text-2xl font-bold mb-6">Dashboard</h1>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-4 mb-8">
         <SummaryCard label="Hosts Online" value={`${onlineHosts}/${hosts.length}`} />
-        <SummaryCard label="Containers" value={totalContainers} />
+        <SummaryCard label="Containers" value={totalContainers} to="/containers" />
         <SummaryCard label="Running" value={totalRunning} accent="text-emerald-400" />
+        <SummaryCard
+          label="Memory In Use"
+          value={memoryTotal ? `${formatBytes(memoryUsed)} / ${formatBytes(memoryTotal)}` : '-'}
+        />
       </div>
 
       <h2 className="text-lg font-semibold mb-4 text-zinc-300">Hosts</h2>
@@ -46,17 +54,25 @@ function SummaryCard({
   label,
   value,
   accent = 'text-zinc-100',
+  to,
 }: {
   label: string;
   value: string | number;
   accent?: string;
+  to?: string;
 }) {
-  return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5">
+  const content = (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-5 transition-colors hover:border-zinc-700">
       <p className="text-sm text-zinc-500 mb-1">{label}</p>
       <p className={`text-3xl font-bold ${accent}`}>{value}</p>
     </div>
   );
+
+  if (to) {
+    return <Link to={to}>{content}</Link>;
+  }
+
+  return content;
 }
 
 function LoadingSkeleton() {

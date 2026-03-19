@@ -6,13 +6,15 @@ import (
 )
 
 type HostStatus struct {
-	Name           string         `json:"name"`
-	Address        string         `json:"address"`
-	Status         string         `json:"status"` // "online", "offline", "error"
-	Error          string         `json:"error,omitempty"`
-	Latency        string         `json:"latency,omitempty"`
-	Containers     []Container    `json:"containers,omitempty"`
-	ContainerCount ContainerCount `json:"container_count"`
+	Name           string          `json:"name"`
+	Address        string          `json:"address"`
+	Mode           string          `json:"mode,omitempty"`
+	Status         string          `json:"status"` // "online", "offline", "error"
+	Error          string          `json:"error,omitempty"`
+	Latency        string          `json:"latency,omitempty"`
+	System         *HostSystemInfo `json:"system,omitempty"`
+	Containers     []Container     `json:"containers,omitempty"`
+	ContainerCount ContainerCount  `json:"container_count"`
 }
 
 type ContainerCount struct {
@@ -35,6 +37,7 @@ type Container struct {
 	Host        string            `json:"host"`
 	Manager     string            `json:"manager"`
 	SystemdUnit string            `json:"systemd_unit,omitempty"`
+	Stats       *ContainerStats   `json:"stats,omitempty"`
 }
 
 type PortMapping struct {
@@ -84,4 +87,32 @@ type ActionResult struct {
 
 type OverviewResponse struct {
 	Hosts []HostStatus `json:"hosts"`
+}
+
+type HostSystemInfo struct {
+	Hostname         string  `json:"hostname,omitempty"`
+	OS               string  `json:"os,omitempty"`
+	Kernel           string  `json:"kernel,omitempty"`
+	UptimeSeconds    int64   `json:"uptime_seconds,omitempty"`
+	CPUCores         int     `json:"cpu_cores,omitempty"`
+	Load1            float64 `json:"load_1,omitempty"`
+	Load5            float64 `json:"load_5,omitempty"`
+	Load15           float64 `json:"load_15,omitempty"`
+	MemoryTotalBytes uint64  `json:"memory_total_bytes,omitempty"`
+	MemoryUsedBytes  uint64  `json:"memory_used_bytes,omitempty"`
+	DiskTotalBytes   uint64  `json:"disk_total_bytes,omitempty"`
+	DiskUsedBytes    uint64  `json:"disk_used_bytes,omitempty"`
+	DiskFreeBytes    uint64  `json:"disk_free_bytes,omitempty"`
+}
+
+type ContainerStats struct {
+	CPUPercent         float64 `json:"cpu_percent,omitempty"`
+	MemoryUsageBytes   uint64  `json:"memory_usage_bytes,omitempty"`
+	MemoryLimitBytes   uint64  `json:"memory_limit_bytes,omitempty"`
+	MemoryPercent      float64 `json:"memory_percent,omitempty"`
+	PIDs               int     `json:"pids,omitempty"`
+	NetworkInputBytes  uint64  `json:"network_input_bytes,omitempty"`
+	NetworkOutputBytes uint64  `json:"network_output_bytes,omitempty"`
+	BlockInputBytes    uint64  `json:"block_input_bytes,omitempty"`
+	BlockOutputBytes   uint64  `json:"block_output_bytes,omitempty"`
 }

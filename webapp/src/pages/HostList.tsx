@@ -1,9 +1,11 @@
-import { useHosts } from '../hooks/useHosts';
+import { useOverview } from '../hooks/useHosts';
 import { StatusBadge } from '../components/StatusBadge';
 import { Link } from 'react-router-dom';
+import { formatBytes, formatUptime } from '../lib/format';
 
 export function HostList() {
-  const { data: hosts, isLoading, error } = useHosts();
+  const { data, isLoading, error } = useOverview();
+  const hosts = data?.hosts ?? [];
 
   if (isLoading) {
     return (
@@ -36,11 +38,12 @@ export function HostList() {
               <th className="px-4 py-3 font-medium">Address</th>
               <th className="px-4 py-3 font-medium">Mode</th>
               <th className="px-4 py-3 font-medium">Status</th>
-              <th className="px-4 py-3 font-medium">Latency</th>
+              <th className="px-4 py-3 font-medium">System</th>
+              <th className="px-4 py-3 font-medium">Usage</th>
             </tr>
           </thead>
           <tbody>
-            {hosts?.map((host) => (
+            {hosts.map((host) => (
               <tr
                 key={host.name}
                 className="border-b border-zinc-800 hover:bg-zinc-800/50 transition-colors"
@@ -58,7 +61,33 @@ export function HostList() {
                 <td className="px-4 py-3">
                   <StatusBadge status={host.status} />
                 </td>
-                <td className="px-4 py-3 text-zinc-500 text-sm">{host.latency ?? '-'}</td>
+                <td className="px-4 py-3 text-sm text-zinc-400">
+                  {host.system ? (
+                    <div>
+                      <p>{host.system.os || 'Unknown OS'}</p>
+                      <p className="text-zinc-500">{formatUptime(host.system.uptime_seconds)}</p>
+                    </div>
+                  ) : (
+                    '-'
+                  )}
+                </td>
+                <td className="px-4 py-3 text-sm text-zinc-400">
+                  {host.system ? (
+                    <div>
+                      <p>
+                        Mem{' '}
+                        {host.system.memory_used_bytes
+                          ? `${formatBytes(host.system.memory_used_bytes)} / ${formatBytes(host.system.memory_total_bytes)}`
+                          : '-'}
+                      </p>
+                      <p className="text-zinc-500">
+                        CPU {host.system.cpu_cores ?? '-'} cores • {host.latency ?? '-'}
+                      </p>
+                    </div>
+                  ) : (
+                    host.latency ?? '-'
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>

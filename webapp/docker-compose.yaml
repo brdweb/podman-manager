@@ -6,7 +6,7 @@ services:
     ports:
       - "18734:18734"
     volumes:
-      - ./config.yaml:/etc/podman-manager/config.yaml:ro
+      - ./config.yaml:/etc/podman-manager/config.yaml
       - ~/.ssh/id_ed25519:/root/.ssh/id_ed25519:ro
     command: ["--config", "/etc/podman-manager/config.yaml"]
 

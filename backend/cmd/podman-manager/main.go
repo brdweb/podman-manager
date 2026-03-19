@@ -13,7 +13,6 @@ import (
 
 	"github.com/brdweb/podman-manager/internal/api"
 	"github.com/brdweb/podman-manager/internal/config"
-	"github.com/brdweb/podman-manager/internal/podman"
 )
 
 var version = "dev"
@@ -39,14 +38,11 @@ func main() {
 		log.Printf("  - %s (%s@%s, %s)", h.Name, h.User, h.Address, h.Mode)
 	}
 
-	pool, err := podman.NewSSHPool(cfg)
+	server, err := api.NewServer(*configPath, cfg)
 	if err != nil {
-		log.Fatalf("failed to initialize SSH pool: %v", err)
+		log.Fatalf("failed to initialize API server: %v", err)
 	}
-	defer pool.Close()
-
-	client := podman.NewClient(pool)
-	server := api.NewServer(client)
+	defer server.Close()
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Bind, cfg.Server.Port)
 	httpServer := &http.Server{
@@ -76,6 +72,6 @@ func main() {
 		log.Printf("graceful shutdown failed: %v", err)
 	}
 
-	pool.Close()
+	server.Close()
 	log.Println("podman-manager stopped")
 }

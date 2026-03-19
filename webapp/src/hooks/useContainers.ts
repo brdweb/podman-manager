@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  getAllContainers,
   getContainers,
   getContainer,
   getContainerLogs,
@@ -12,6 +13,15 @@ export function useContainers(host: string) {
   return useQuery({
     queryKey: ['containers', host],
     queryFn: () => getContainers(host),
+    enabled: !!host,
+    refetchInterval: 10_000,
+  });
+}
+
+export function useAllContainers() {
+  return useQuery({
+    queryKey: ['containers', 'all'],
+    queryFn: getAllContainers,
     refetchInterval: 10_000,
   });
 }
@@ -41,6 +51,7 @@ export function useContainerAction() {
       startContainer(host, id),
     onSuccess: (_data, { host }) => {
       void qc.invalidateQueries({ queryKey: ['containers', host] });
+      void qc.invalidateQueries({ queryKey: ['containers', 'all'] });
       void qc.invalidateQueries({ queryKey: ['overview'] });
     },
   });
@@ -50,6 +61,7 @@ export function useContainerAction() {
       stopContainer(host, id),
     onSuccess: (_data, { host }) => {
       void qc.invalidateQueries({ queryKey: ['containers', host] });
+      void qc.invalidateQueries({ queryKey: ['containers', 'all'] });
       void qc.invalidateQueries({ queryKey: ['overview'] });
     },
   });
@@ -59,6 +71,7 @@ export function useContainerAction() {
       restartContainer(host, id),
     onSuccess: (_data, { host }) => {
       void qc.invalidateQueries({ queryKey: ['containers', host] });
+      void qc.invalidateQueries({ queryKey: ['containers', 'all'] });
       void qc.invalidateQueries({ queryKey: ['overview'] });
     },
   });

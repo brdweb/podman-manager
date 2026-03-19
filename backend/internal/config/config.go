@@ -14,6 +14,7 @@ type Config struct {
 	Server ServerConfig `yaml:"server"`
 	SSH    SSHConfig    `yaml:"ssh"`
 	Hosts  []HostConfig `yaml:"hosts"`
+	Auth   AuthConfig   `yaml:"auth,omitempty"`
 }
 
 type ServerConfig struct {
@@ -35,6 +36,13 @@ type HostConfig struct {
 	Mode    string `yaml:"mode"` // "rootful" or "rootless"
 }
 
+type AuthConfig struct {
+	Enabled      bool          `yaml:"enabled"`
+	Username     string        `yaml:"username,omitempty"`
+	PasswordHash string        `yaml:"password_hash,omitempty"`
+	SessionTTL   time.Duration `yaml:"session_ttl,omitempty"`
+}
+
 func (h HostConfig) IsRootful() bool {
 	return h.Mode == "rootful"
 }
@@ -48,14 +56,47 @@ func (h HostConfig) SSHAddress() string {
 }
 
 func Load(path string) (*Config, error) {
-	expanded := expandHome(path)
+	expanded := ExpandPath(path)
 
 	data, err := os.ReadFile(expanded)
 	if err != nil {
 		return nil, fmt.Errorf("reading config file %s: %w", expanded, err)
 	}
 
-	cfg := &Config{
+	cfg, err := LoadBytes(data)
+	if err != nil {
+		return nil, err
+	}
+
+	cfg.SSH.KeyPath = ExpandPath(cfg.SSH.KeyPath)
+	return cfg, nil
+}
+
+func LoadBytes(data []byte) (*Config, error) {
+	cfg := defaultConfig()
+
+	if err := yaml.Unmarshal(data, cfg); err != nil {
+		return nil, fmt.Errorf("parsing config file: %w", err)
+	}
+
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid config: %w", err)
+	}
+
+	cfg.SSH.KeyPath = ExpandPath(cfg.SSH.KeyPath)
+	return cfg, nil
+}
+
+func Marshal(cfg *Config) ([]byte, error) {
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("serializing config: %w", err)
+	}
+	return data, nil
+}
+
+func defaultConfig() *Config {
+	return &Config{
 		Server: ServerConfig{
 			Port: 18734,
 			Bind: "127.0.0.1",
@@ -64,22 +105,13 @@ func Load(path string) (*Config, error) {
 			ConnectTimeout:    5 * time.Second,
 			KeepaliveInterval: 30 * time.Second,
 		},
+		Auth: AuthConfig{
+			SessionTTL: 12 * time.Hour,
+		},
 	}
-
-	if err := yaml.Unmarshal(data, cfg); err != nil {
-		return nil, fmt.Errorf("parsing config file: %w", err)
-	}
-
-	if err := cfg.validate(); err != nil {
-		return nil, fmt.Errorf("invalid config: %w", err)
-	}
-
-	cfg.SSH.KeyPath = expandHome(cfg.SSH.KeyPath)
-
-	return cfg, nil
 }
 
-func (c *Config) validate() error {
+func (c *Config) Validate() error {
 	if c.Server.Port < 1 || c.Server.Port > 65535 {
 		return fmt.Errorf("server.port must be between 1 and 65535, got %d", c.Server.Port)
 	}
@@ -117,10 +149,23 @@ func (c *Config) validate() error {
 		return fmt.Errorf("ssh.key_path is required")
 	}
 
+	if c.Auth.SessionTTL <= 0 {
+		c.Auth.SessionTTL = 12 * time.Hour
+	}
+
+	if c.Auth.Enabled {
+		if c.Auth.Username == "" {
+			return fmt.Errorf("auth.username is required when auth is enabled")
+		}
+		if c.Auth.PasswordHash == "" {
+			return fmt.Errorf("auth.password_hash is required when auth is enabled")
+		}
+	}
+
 	return nil
 }
 
-func expandHome(path string) string {
+func ExpandPath(path string) string {
 	if strings.HasPrefix(path, "~/") {
 		home, err := os.UserHomeDir()
 		if err != nil {
