@@ -238,3 +238,76 @@
   max-height: 300px;
   overflow-y: auto;
 }
+
+.podman-dash-body {
+  padding: 4px 0;
+  max-height: 400px;
+  overflow-y: auto;
+}
+.podman-dash-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.podman-dash-ct td {
+  padding: 3px 6px;
+  vertical-align: middle;
+  font-size: 0.85em;
+  border: none;
+}
+.podman-dash-ct:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+.podman-dash-state {
+  width: 20px;
+  text-align: center;
+}
+.podman-dash-state i {
+  font-size: 0.75em;
+}
+.podman-dash-name-cell {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+.podman-dash-name {
+  font-weight: 500;
+}
+.podman-dash-host {
+  opacity: 0.55;
+  font-size: 0.85em;
+  white-space: nowrap;
+}
+.podman-dash-actions {
+  white-space: nowrap;
+  text-align: right;
+  width: 60px;
+}
+.podman-dash-action {
+  font-size: 0.85em;
+  opacity: 0.5;
+  margin-left: 6px;
+  transition: opacity 0.15s;
+}
+.podman-dash-action:hover {
+  opacity: 1;
+}
+.podman-dash-offline td {
+  opacity: 0.6;
+}
+.podman-dash-empty {
+  text-align: center;
+  padding: 12px 8px;
+  opacity: 0.7;
+  font-size: 0.9em;
+}
+.podman-dash-empty a {
+  color: inherit;
+  text-decoration: underline;
+}
+.podman-dash-loading {
+  text-align: center;
+  padding: 12px 8px;
+  opacity: 0.6;
+  font-size: 0.9em;
+}
