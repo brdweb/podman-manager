@@ -16,12 +16,10 @@
 
 <CHANGES>
 ### @VERSION@
-- Initial release
-- Multi-host Podman container management
-- Shared Go backend for Unraid plugin and future web app
-- Start/stop/restart containers across remote hosts
-- View container details: IPs, ports, volumes
-- Auto-refresh container status
+- Add a Podman dashboard tile to the Unraid dashboard
+- Show running and total container counts across managed hosts
+- Add quick container start, stop, and restart actions from the tile
+- Refresh dashboard tile status through the existing API proxy
 </CHANGES>
 
 <FILE Name="&pluginLOC;/&name;-&version;-x86_64-1.txz" Run="upgradepkg --install-new">
