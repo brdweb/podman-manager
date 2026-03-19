@@ -29,7 +29,7 @@ $mytiles[$plugin]['column1'] = <<<EOT
 <style>
 .podman-dash-body{padding:4px 0;max-height:420px;overflow-y:auto}
 .podman-dash-table{width:100%;border-collapse:collapse}
-.podman-dash-ct td{padding:3px 6px;border:none;vertical-align:middle;font-size:inherit!important;font-weight:normal!important}
+.podman-dash-ct td{padding:3px 6px!important;border:none!important;vertical-align:middle;font-size:inherit!important;font-weight:normal!important;line-height:normal!important;margin:0!important}
 .podman-dash-ct:hover{background:rgba(255,255,255,.03)}
 .podman-dash-state{width:22px;text-align:center}
 .podman-dash-name-cell{max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
