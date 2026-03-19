@@ -1,7 +1,7 @@
 Menu="Dashboard:0"
 Cond="is_file('/usr/local/bin/podman-manager')"
 ---
-<?php
+<?PHP
 $cfg = parse_plugin_cfg('podman-manager');
 $refreshInterval = $cfg['REFRESH_INTERVAL'] ?? '10000';
 $backendRunning = trim(shell_exec("pgrep -f /usr/local/bin/podman-manager 2>/dev/null")) !== '';
@@ -9,277 +9,107 @@ $unraidVersion = @parse_ini_file('/etc/unraid-version')['version'] ?? '0';
 $isResponsive = version_compare($unraidVersion, '7.2.0-beta', '>=');
 $settingsUrl = '/Settings/podman-manager.settings';
 $plugin = 'podman-manager';
+$backendUpJs = $backendRunning ? 'true' : 'false';
 
 $subtitle = $backendRunning
   ? 'Loading...'
   : '<span class="orange-text"><i class="fa fa-exclamation-triangle"></i> Backend stopped</span>';
 
-$titleBlock = $isResponsive
-  ? '<h3 class="tile-header-main">Podman</h3><span id="podman-dash-subtitle">' . $subtitle . '</span>'
-  : 'Podman<br><span id="podman-dash-subtitle">' . $subtitle . '</span><br>';
-
-$tile = <<<'EOT'
-<tbody title="Podman container status and actions">
-  <tr>
-    <td>
-      <style>
-        .podman-dash-body {
-          padding: 4px 0;
-          max-height: 420px;
-          overflow-y: auto;
-        }
-        .podman-dash-table {
-          width: 100%;
-          border-collapse: collapse;
-        }
-        .podman-dash-ct td {
-          padding: 3px 6px;
-          border: none;
-          vertical-align: middle;
-          font-size: 0.9em;
-        }
-        .podman-dash-ct:hover {
-          background: rgba(255,255,255,0.03);
-        }
-        .podman-dash-state {
-          width: 22px;
-          text-align: center;
-        }
-        .podman-dash-name-cell {
-          max-width: 240px;
-          overflow: hidden;
-          text-overflow: ellipsis;
-          white-space: nowrap;
-        }
-        .podman-dash-name {
-          font-weight: 500;
-        }
-        .podman-dash-host {
-          opacity: 0.6;
-          white-space: nowrap;
-        }
-        .podman-dash-actions {
-          width: 64px;
-          text-align: right;
-          white-space: nowrap;
-        }
-        .podman-dash-action {
-          margin-left: 6px;
-          opacity: 0.6;
-        }
-        .podman-dash-action:hover {
-          opacity: 1;
-        }
-        .podman-dash-empty,
-        .podman-dash-loading {
-          padding: 12px 8px;
-          text-align: center;
-          opacity: 0.75;
-        }
-        .podman-dash-offline td {
-          opacity: 0.65;
-        }
-        .podman-mgr-badge {
-          display: inline-block;
-          margin-left: 4px;
-          padding: 1px 4px;
-          border-radius: 3px;
-          font-size: 0.7em;
-          font-weight: 700;
-          line-height: 1.3;
-          vertical-align: middle;
-        }
-        .podman-mgr-quadlet {
-          background: rgba(100, 180, 255, 0.15);
-          color: #6ab4ff;
-          border: 1px solid rgba(100, 180, 255, 0.3);
-        }
-        .podman-mgr-compose {
-          background: rgba(255, 180, 50, 0.15);
-          color: #f0b832;
-          border: 1px solid rgba(255, 180, 50, 0.3);
-        }
-      </style>
-      <span class="tile-header">
-        <span class="tile-header-left">
-          <i class="fa fa-cube f32"></i>
-          <div class="section">__TITLE_BLOCK__</div>
-        </span>
-        <span class="tile-header-right">
-          <span class="tile-ctrl">
-            <span class="fa fa-refresh hand" title="Refresh" onclick="podmanDashRefresh()"></span>
-          </span>
-          <span class="tile-header-right-controls">
-            <a href="__SETTINGS_URL__"><i class="fa fa-cog control"></i></a>
-          </span>
-        </span>
-      </span>
-    </td>
-  </tr>
-  <tr>
-    <td>
-      <div id="podman-dash-body" class="podman-dash-body">__INITIAL_BODY__</div>
-    </td>
-  </tr>
-  <script>
-    var podmanDashProxy = '/plugins/podman-manager/include/Events.php';
-    var podmanDashRefreshMs = __REFRESH_MS__;
-    var podmanDashTimer = null;
-    var podmanDashBackendUp = __BACKEND_UP__;
-    var podmanDashSettingsUrl = '__SETTINGS_URL__';
-
-    function podmanDashApi(path) {
-      return podmanDashProxy + '?action=api_proxy&path=' + encodeURIComponent('/api' + path);
-    }
-
-    function podmanDashLoad() {
-      if (!podmanDashBackendUp) {
-        return;
-      }
-
-      $.getJSON(podmanDashApi('/overview'), function(data) {
-        podmanDashRender(data);
-      }).fail(function() {
-        $('#podman-dash-subtitle').html('<span class="red-text"><i class="fa fa-exclamation-triangle"></i> Backend unreachable</span>');
-        $('#podman-dash-body').html(
-          '<div class="podman-dash-empty">' +
-          '<i class="fa fa-exclamation-triangle red-text"></i> ' +
-          'Backend unreachable. <a href="' + podmanDashSettingsUrl + '">Check settings.</a>' +
-          '</div>'
-        );
-      }).always(function() {
-        podmanDashTimer = setTimeout(podmanDashLoad, podmanDashRefreshMs);
-      });
-    }
-
-    function podmanDashRender(data) {
-      if (!data || !data.hosts) {
-        $('#podman-dash-subtitle').text('No data');
-        $('#podman-dash-body').html('<div class="podman-dash-empty">No host data available</div>');
-        return;
-      }
-
-      var totalContainers = 0;
-      var runningContainers = 0;
-      var hostsOnline = 0;
-
-      data.hosts.forEach(function(host) {
-        if (host.status === 'online') {
-          hostsOnline++;
-        }
-        if (host.container_count) {
-          totalContainers += host.container_count.total || 0;
-          runningContainers += host.container_count.running || 0;
-        }
-      });
-
-      $('#podman-dash-subtitle').html(
-        '<span class="green-text">' + runningContainers + ' running</span> / ' +
-        totalContainers + ' total on ' + hostsOnline + ' host' + (hostsOnline !== 1 ? 's' : '')
-      );
-
-      if (totalContainers === 0) {
-        $('#podman-dash-body').html('<div class="podman-dash-empty">No containers found</div>');
-        return;
-      }
-
-      var html = '<table class="podman-dash-table">';
-      data.hosts.forEach(function(host) {
-        if (host.status !== 'online') {
-          html += '<tr class="podman-dash-ct podman-dash-offline">' +
-            '<td class="podman-dash-state"><i class="fa fa-times-circle red-text"></i></td>' +
-            '<td class="podman-dash-name-cell" colspan="2"><span class="podman-dash-name">' + host.name + '</span></td>' +
-            '<td class="podman-dash-actions red-text">Offline</td>' +
-            '</tr>';
-          return;
-        }
-
-        if (!host.containers || host.containers.length === 0) {
-          return;
-        }
-
-        host.containers.forEach(function(ct) {
-          var stateIcon = 'fa-circle';
-          var stateClass = 'orange-text';
-          if (ct.state === 'running') {
-            stateIcon = 'fa-play';
-            stateClass = 'green-text';
-          } else if (ct.state === 'exited' || ct.state === 'stopped') {
-            stateIcon = 'fa-square';
-            stateClass = 'red-text';
-          }
-
-          var actionTarget = ct.systemd_unit || ct.id;
-          var actions = '';
-          if (ct.state === 'running') {
-            actions = '<span class="podman-dash-action fa fa-stop hand" title="Stop" onclick="podmanDashAction(\'' + host.name + '\',\'' + actionTarget + '\',\'stop\'); return false;"></span>' +
-              '<span class="podman-dash-action fa fa-refresh hand" title="Restart" onclick="podmanDashAction(\'' + host.name + '\',\'' + actionTarget + '\',\'restart\'); return false;"></span>';
-          } else {
-            actions = '<span class="podman-dash-action fa fa-play hand" title="Start" onclick="podmanDashAction(\'' + host.name + '\',\'' + actionTarget + '\',\'start\'); return false;"></span>';
-          }
-
-          var managerBadge = '';
-          if (ct.manager === 'quadlet') {
-            managerBadge = ' <span class="podman-mgr-badge podman-mgr-quadlet" title="Quadlet">Q</span>';
-          } else if (ct.manager === 'compose') {
-            managerBadge = ' <span class="podman-mgr-badge podman-mgr-compose" title="Compose">C</span>';
-          }
-
-          html += '<tr class="podman-dash-ct" data-host="' + host.name + '" data-target="' + actionTarget + '">' +
-            '<td class="podman-dash-state"><i class="fa ' + stateIcon + ' ' + stateClass + '"></i></td>' +
-            '<td class="podman-dash-name-cell"><span class="podman-dash-name">' + ct.name + '</span>' + managerBadge + '</td>' +
-            '<td class="podman-dash-host">' + host.name + '</td>' +
-            '<td class="podman-dash-actions">' + actions + '</td>' +
-            '</tr>';
-        });
-      });
-      html += '</table>';
-
-      $('#podman-dash-body').html(html);
-    }
-
-    function podmanDashAction(host, actionTarget, action) {
-      var $row = $('.podman-dash-ct[data-host="' + host + '"][data-target="' + actionTarget + '"]');
-      var $icon = $row.find('.podman-dash-state i');
-      var originalClass = $icon.attr('class');
-      $icon.attr('class', 'fa fa-refresh fa-spin');
-
-      $.post(podmanDashApi('/hosts/' + host + '/containers/' + encodeURIComponent(actionTarget) + '/' + action), function(data) {
-        if (data && !data.success) {
-          if (typeof swal !== 'undefined') {
-            swal('Error', data.error || 'Action failed', 'error');
-          } else {
-            alert('Error: ' + (data.error || 'Action failed'));
-          }
-        }
-        clearTimeout(podmanDashTimer);
-        setTimeout(podmanDashLoad, 1000);
-      }).fail(function() {
-        $icon.attr('class', originalClass);
-        alert('Failed to ' + action + ' container');
-      });
-    }
-
-    function podmanDashRefresh() {
-      clearTimeout(podmanDashTimer);
-      podmanDashLoad();
-    }
-
-    $(function() {
-      podmanDashLoad();
-    });
-  </script>
-</tbody>
-EOT;
+if ($isResponsive) {
+  $titleHtml = "<h3 class=\"tile-header-main\">Podman</h3><span id=\"podman-dash-subtitle\">{$subtitle}</span>";
+} else {
+  $titleHtml = "Podman<br><span id=\"podman-dash-subtitle\">{$subtitle}</span><br>";
+}
 
 $initialBody = $backendRunning
   ? '<div class="podman-dash-loading"><i class="fa fa-spinner fa-spin"></i> Loading containers...</div>'
-  : '<div class="podman-dash-empty"><i class="fa fa-exclamation-triangle orange-text"></i> Backend is not running. <a href="' . $settingsUrl . '">Start it in settings.</a></div>';
+  : "<div class=\"podman-dash-empty\"><i class=\"fa fa-exclamation-triangle orange-text\"></i> Backend is not running. <a href=\"{$settingsUrl}\">Start it in settings.</a></div>";
 
-$mytiles[$plugin]['column1'] = strtr($tile, [
-  '__TITLE_BLOCK__' => $titleBlock,
-  '__SETTINGS_URL__' => $settingsUrl,
-  '__INITIAL_BODY__' => $initialBody,
-  '__REFRESH_MS__' => $refreshInterval,
-  '__BACKEND_UP__' => $backendRunning ? 'true' : 'false',
-]);
+$mytiles[$plugin]['column1'] = <<<EOT
+<style>
+.podman-dash-body{padding:4px 0;max-height:420px;overflow-y:auto}
+.podman-dash-table{width:100%;border-collapse:collapse}
+.podman-dash-ct td{padding:3px 6px;border:none;vertical-align:middle;font-size:.9em}
+.podman-dash-ct:hover{background:rgba(255,255,255,.03)}
+.podman-dash-state{width:22px;text-align:center}
+.podman-dash-name-cell{max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.podman-dash-name{font-weight:500}
+.podman-dash-host{opacity:.6;white-space:nowrap}
+.podman-dash-actions{width:64px;text-align:right;white-space:nowrap}
+.podman-dash-action{margin-left:6px;opacity:.6;cursor:pointer}
+.podman-dash-action:hover{opacity:1}
+.podman-dash-empty,.podman-dash-loading{padding:12px 8px;text-align:center;opacity:.75}
+.podman-dash-offline td{opacity:.65}
+.podman-mgr-badge{display:inline-block;margin-left:4px;padding:1px 4px;border-radius:3px;font-size:.7em;font-weight:700;line-height:1.3;vertical-align:middle}
+.podman-mgr-quadlet{background:rgba(100,180,255,.15);color:#6ab4ff;border:1px solid rgba(100,180,255,.3)}
+.podman-mgr-compose{background:rgba(255,180,50,.15);color:#f0b832;border:1px solid rgba(255,180,50,.3)}
+</style>
+<tbody title="Podman container status and actions">
+<tr><td>
+<span class="tile-header">
+<span class="tile-header-left">
+<i class="fa fa-cube f32"></i>
+<div class="section">{$titleHtml}</div>
+</span>
+<span class="tile-header-right">
+<span class="tile-ctrl"><span class="fa fa-refresh hand" title="Refresh" onclick="podmanDashRefresh()"></span></span>
+<span class="tile-header-right-controls"><a href="{$settingsUrl}"><i class="fa fa-cog control"></i></a></span>
+</span>
+</span>
+</td></tr>
+<tr><td>
+<div id="podman-dash-body" class="podman-dash-body">{$initialBody}</div>
+<script>
+var podmanDashProxy='/plugins/podman-manager/include/Events.php';
+var podmanDashRefreshMs={$refreshInterval};
+var podmanDashTimer=null;
+var podmanDashBackendUp={$backendUpJs};
+var podmanDashSettingsUrl='{$settingsUrl}';
+function podmanDashApi(p){return podmanDashProxy+'?action=api_proxy&path='+encodeURIComponent('/api'+p)}
+function podmanDashLoad(){
+if(!podmanDashBackendUp)return;
+\$.getJSON(podmanDashApi('/overview'),function(data){podmanDashRender(data)}).fail(function(){
+\$('#podman-dash-subtitle').html('<span class="red-text"><i class="fa fa-exclamation-triangle"></i> Backend unreachable</span>');
+\$('#podman-dash-body').html('<div class="podman-dash-empty"><i class="fa fa-exclamation-triangle red-text"></i> Backend unreachable. <a href="'+podmanDashSettingsUrl+'">Check settings.</a></div>');
+}).always(function(){podmanDashTimer=setTimeout(podmanDashLoad,podmanDashRefreshMs)});
+}
+function podmanDashRender(data){
+if(!data||!data.hosts){\$('#podman-dash-subtitle').text('No data');\$('#podman-dash-body').html('<div class="podman-dash-empty">No host data available</div>');return}
+var tot=0,run=0,on=0;
+data.hosts.forEach(function(h){if(h.status==='online')on++;if(h.container_count){tot+=h.container_count.total||0;run+=h.container_count.running||0}});
+\$('#podman-dash-subtitle').html('<span class="green-text">'+run+' running</span> / '+tot+' total on '+on+' host'+(on!==1?'s':''));
+if(tot===0){\$('#podman-dash-body').html('<div class="podman-dash-empty">No containers found</div>');return}
+var html='<table class="podman-dash-table">';
+data.hosts.forEach(function(host){
+if(host.status!=='online'){html+='<tr class="podman-dash-ct podman-dash-offline"><td class="podman-dash-state"><i class="fa fa-times-circle red-text"></i></td><td class="podman-dash-name-cell" colspan="2"><span class="podman-dash-name">'+host.name+'</span></td><td class="podman-dash-actions red-text">Offline</td></tr>';return}
+if(!host.containers||host.containers.length===0)return;
+host.containers.forEach(function(ct){
+var si='fa-circle',sc='orange-text';
+if(ct.state==='running'){si='fa-play';sc='green-text'}else if(ct.state==='exited'||ct.state==='stopped'){si='fa-square';sc='red-text'}
+var at=ct.systemd_unit||ct.id;
+var act='';
+if(ct.state==='running'){act='<span class="podman-dash-action fa fa-stop hand" title="Stop" onclick="podmanDashAction(\''+host.name+'\',\''+at+'\',\'stop\')"></span><span class="podman-dash-action fa fa-refresh hand" title="Restart" onclick="podmanDashAction(\''+host.name+'\',\''+at+'\',\'restart\')"></span>'}
+else{act='<span class="podman-dash-action fa fa-play hand" title="Start" onclick="podmanDashAction(\''+host.name+'\',\''+at+'\',\'start\')"></span>'}
+var mb='';
+if(ct.manager==='quadlet')mb=' <span class="podman-mgr-badge podman-mgr-quadlet" title="Quadlet">Q</span>';
+else if(ct.manager==='compose')mb=' <span class="podman-mgr-badge podman-mgr-compose" title="Compose">C</span>';
+html+='<tr class="podman-dash-ct" data-host="'+host.name+'" data-target="'+at+'"><td class="podman-dash-state"><i class="fa '+si+' '+sc+'"></i></td><td class="podman-dash-name-cell"><span class="podman-dash-name">'+ct.name+'</span>'+mb+'</td><td class="podman-dash-host">'+host.name+'</td><td class="podman-dash-actions">'+act+'</td></tr>';
+})});
+html+='</table>';
+\$('#podman-dash-body').html(html);
+}
+function podmanDashAction(host,target,action){
+var r=\$('.podman-dash-ct[data-host="'+host+'"][data-target="'+target+'"]');
+var ic=r.find('.podman-dash-state i');var oc=ic.attr('class');ic.attr('class','fa fa-refresh fa-spin');
+\$.post(podmanDashApi('/hosts/'+host+'/containers/'+encodeURIComponent(target)+'/'+action),function(d){
+if(d&&!d.success){if(typeof swal!=='undefined')swal('Error',d.error||'Action failed','error');else alert('Error: '+(d.error||'Action failed'))}
+clearTimeout(podmanDashTimer);setTimeout(podmanDashLoad,1000);
+}).fail(function(){ic.attr('class',oc)});
+}
+function podmanDashRefresh(){clearTimeout(podmanDashTimer);podmanDashLoad()}
+\$(function(){podmanDashLoad()});
+</script>
+</td></tr>
+</tbody>
+EOT;
+?>
