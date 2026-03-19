@@ -28,8 +28,8 @@ $initialBody = $backendRunning
 $mytiles[$plugin]['column1'] = <<<EOT
 <style>
 .podman-dash-body{padding:4px 0;max-height:420px;overflow-y:auto}
-.podman-dash-table{width:100%;border-collapse:collapse;font-size:0.85rem}
-.podman-dash-ct td{padding:3px 6px;border:none;vertical-align:middle;font-size:.9em}
+.podman-dash-table{width:100%;border-collapse:collapse}
+.podman-dash-ct td{padding:3px 6px;border:none;vertical-align:middle}
 .podman-dash-ct:hover{background:rgba(255,255,255,.03)}
 .podman-dash-state{width:22px;text-align:center}
 .podman-dash-name-cell{max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -79,22 +79,27 @@ var tot=0,run=0,on=0;
 data.hosts.forEach(function(h){if(h.status==='online')on++;if(h.container_count){tot+=h.container_count.total||0;run+=h.container_count.running||0}});
 \$('#podman-dash-subtitle').html('<span class="green-text">'+run+' running</span> / '+tot+' total on '+on+' host'+(on!==1?'s':''));
 if(tot===0){\$('#podman-dash-body').html('<div class="podman-dash-empty">No containers found</div>');return}
-var html='<table class="podman-dash-table">';
+var all=[];
 data.hosts.forEach(function(host){
-if(host.status!=='online'){html+='<tr class="podman-dash-ct podman-dash-offline"><td class="podman-dash-state"><i class="fa fa-times-circle red-text"></i></td><td class="podman-dash-name-cell" colspan="2"><span class="podman-dash-name">'+host.name+'</span></td><td class="podman-dash-actions red-text">Offline</td></tr>';return}
+if(host.status!=='online'){all.push({offline:true,hostName:host.name});return}
 if(!host.containers||host.containers.length===0)return;
-host.containers.forEach(function(ct){
+host.containers.forEach(function(ct){all.push({offline:false,hostName:host.name,ct:ct})})});
+all.sort(function(a,b){if(a.offline!==b.offline)return a.offline?1:-1;var an=a.ct?a.ct.name.toLowerCase():'';var bn=b.ct?b.ct.name.toLowerCase():'';return an<bn?-1:an>bn?1:0});
+var html='<table class="podman-dash-table">';
+all.forEach(function(row){
+if(row.offline){html+='<tr class="podman-dash-ct podman-dash-offline"><td class="podman-dash-state"><i class="fa fa-times-circle red-text"></i></td><td class="podman-dash-name-cell" colspan="2"><span class="podman-dash-name">'+row.hostName+'</span></td><td class="podman-dash-actions red-text">Offline</td></tr>';return}
+var ct=row.ct;var hn=row.hostName;
 var si='fa-circle',sc='orange-text';
 if(ct.state==='running'){si='fa-play';sc='green-text'}else if(ct.state==='exited'||ct.state==='stopped'){si='fa-square';sc='red-text'}
 var at=ct.id;
 var act='';
-if(ct.state==='running'){act='<span class="podman-dash-action fa fa-stop hand" title="Stop" onclick="podmanDashAction(\''+host.name+'\',\''+at+'\',\'stop\')"></span><span class="podman-dash-action fa fa-refresh hand" title="Restart" onclick="podmanDashAction(\''+host.name+'\',\''+at+'\',\'restart\')"></span>'}
-else{act='<span class="podman-dash-action fa fa-play hand" title="Start" onclick="podmanDashAction(\''+host.name+'\',\''+at+'\',\'start\')"></span>'}
+if(ct.state==='running'){act='<span class="podman-dash-action fa fa-stop hand" title="Stop" onclick="podmanDashAction(\''+hn+'\',\''+at+'\',\'stop\')"></span><span class="podman-dash-action fa fa-refresh hand" title="Restart" onclick="podmanDashAction(\''+hn+'\',\''+at+'\',\'restart\')"></span>'}
+else{act='<span class="podman-dash-action fa fa-play hand" title="Start" onclick="podmanDashAction(\''+hn+'\',\''+at+'\',\'start\')"></span>'}
 var mb='';
 if(ct.manager==='quadlet')mb=' <span class="podman-mgr-badge podman-mgr-quadlet" title="Quadlet">Q</span>';
 else if(ct.manager==='compose')mb=' <span class="podman-mgr-badge podman-mgr-compose" title="Compose">C</span>';
-html+='<tr class="podman-dash-ct" data-host="'+host.name+'" data-target="'+at+'"><td class="podman-dash-state"><i class="fa '+si+' '+sc+'"></i></td><td class="podman-dash-name-cell"><span class="podman-dash-name">'+ct.name+'</span>'+mb+'</td><td class="podman-dash-host">'+host.name+'</td><td class="podman-dash-actions">'+act+'</td></tr>';
-})});
+html+='<tr class="podman-dash-ct" data-host="'+hn+'" data-target="'+at+'"><td class="podman-dash-state"><i class="fa '+si+' '+sc+'"></i></td><td class="podman-dash-name-cell"><span class="podman-dash-name">'+ct.name+'</span>'+mb+'</td><td class="podman-dash-host">'+hn+'</td><td class="podman-dash-actions">'+act+'</td></tr>';
+});
 html+='</table>';
 \$('#podman-dash-body').html(html);
 }
