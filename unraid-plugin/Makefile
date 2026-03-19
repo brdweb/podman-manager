@@ -6,7 +6,7 @@ DIST := dist
 SRC := src
 GITHUB_REPO ?= brdweb/podman-manager
 
-.PHONY: all clean package binary plg release
+.PHONY: all clean package binary plg release lint-php verify-manifest verify
 
 all: release
 
@@ -29,6 +29,14 @@ plg: package
 	VERSION=$(VERSION) GITHUB_REPO=$(GITHUB_REPO) TXZ_PATH=$(DIST)/$(PKG).txz OUTPUT_PATH=podman-manager.plg ./scripts/generate-plg.sh
 
 release: plg
+
+lint-php:
+	./scripts/lint-pages.sh
+
+verify-manifest:
+	VERSION=$(VERSION) TXZ_PATH=$(DIST)/$(PKG).txz PLG_PATH=podman-manager.plg ./scripts/verify-release.sh
+
+verify: lint-php release verify-manifest
 
 clean:
 	rm -rf $(DIST)
