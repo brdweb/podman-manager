@@ -202,7 +202,9 @@ func (c *Client) containerAction(ctx context.Context, hostName, containerID, act
 	safeID := sanitizeID(containerID)
 
 	var cmd string
-	if strings.HasPrefix(safeID, "quadlet-") {
+	if strings.HasSuffix(safeID, ".service") {
+		cmd = c.systemctlCmd(hostCfg, action, safeID)
+	} else if strings.HasPrefix(safeID, "quadlet-") {
 		unit := strings.TrimPrefix(safeID, "quadlet-") + ".service"
 		cmd = c.systemctlCmd(hostCfg, action, unit)
 	} else {
