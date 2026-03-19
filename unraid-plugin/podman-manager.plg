@@ -2,7 +2,7 @@
 <!DOCTYPE PLUGIN [
   <!ENTITY name        "podman-manager">
   <!ENTITY author      "brdweb">
-  <!ENTITY version     "2026.03.19.2">
+  <!ENTITY version     "2026.03.19.3">
   <!ENTITY launch      "Tasks/PodmanManager">
   <!ENTITY github      "brdweb/podman-manager">
   <!ENTITY pluginURL   "https://raw.githubusercontent.com/&github;/main/unraid-plugin/podman-manager.plg">
@@ -15,7 +15,7 @@
         icon="fa-cube" min="7.0.0">
 
 <CHANGES>
-### 2026.03.19.2
+### 2026.03.19.3
 - Define the Podman dashboard tile through Unraid's native custom tile registration flow
 - Route Quadlet dashboard actions through systemd service targets for reliable control
 - Keep dashboard quick actions and summary counts available inside the standard widget layout
@@ -23,7 +23,7 @@
 
 <FILE Name="&pluginLOC;/&name;-&version;-x86_64-1.txz" Run="upgradepkg --install-new">
   <URL>https://github.com/&github;/releases/download/v&version;/&name;-&version;-x86_64-1.txz</URL>
-  <SHA256>77c4ab81f80f3f964756688bccae8d7e094cd0f032fd7b9cce89da7490b7882c</SHA256>
+  <SHA256>f8d84b2532c304efcfb91e4af6cc5e753deddf8c6e1f651abf3f98fcaedf369d</SHA256>
 </FILE>
 
 <FILE Run="/bin/bash">
