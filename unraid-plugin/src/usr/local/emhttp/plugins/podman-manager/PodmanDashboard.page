@@ -28,7 +28,7 @@ $initialBody = $backendRunning
 $mytiles[$plugin]['column1'] = <<<EOT
 <style>
 .podman-dash-body{padding:4px 0;max-height:420px;overflow-y:auto}
-.podman-dash-table{width:100%;border-collapse:collapse}
+.podman-dash-table{width:100%;border-collapse:collapse;font-size:0.85rem}
 .podman-dash-ct td{padding:3px 6px;border:none;vertical-align:middle;font-size:.9em}
 .podman-dash-ct:hover{background:rgba(255,255,255,.03)}
 .podman-dash-state{width:22px;text-align:center}
@@ -86,7 +86,7 @@ if(!host.containers||host.containers.length===0)return;
 host.containers.forEach(function(ct){
 var si='fa-circle',sc='orange-text';
 if(ct.state==='running'){si='fa-play';sc='green-text'}else if(ct.state==='exited'||ct.state==='stopped'){si='fa-square';sc='red-text'}
-var at=ct.systemd_unit||ct.id;
+var at=ct.id;
 var act='';
 if(ct.state==='running'){act='<span class="podman-dash-action fa fa-stop hand" title="Stop" onclick="podmanDashAction(\''+host.name+'\',\''+at+'\',\'stop\')"></span><span class="podman-dash-action fa fa-refresh hand" title="Restart" onclick="podmanDashAction(\''+host.name+'\',\''+at+'\',\'restart\')"></span>'}
 else{act='<span class="podman-dash-action fa fa-play hand" title="Start" onclick="podmanDashAction(\''+host.name+'\',\''+at+'\',\'start\')"></span>'}
