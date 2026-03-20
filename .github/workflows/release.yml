@@ -1,0 +1,91 @@
+name: Release Podman Manager
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version (YYYY.MM.DD format, e.g., 2026.03.20)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Build backend binary
+        run: |
+          cd backend
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X main.version=${{ inputs.version }}" -o bin/podman-manager-linux-amd64 ./cmd/podman-manager
+
+      - name: Package Unraid plugin
+        run: |
+          cd unraid-plugin
+          mkdir -p src/usr/local/bin
+          cp ../backend/bin/podman-manager-linux-amd64 src/usr/local/bin/podman-manager
+          chmod 755 src/usr/local/bin/podman-manager
+          
+          mkdir -p dist
+          # Create the txz package directly
+          tar -C src -cJf dist/podman-manager-${{ inputs.version }}-x86_64-1.txz .
+
+      - name: Generate .plg file
+        run: |
+          cd unraid-plugin
+          VERSION="${{ inputs.version }}" GITHUB_REPO="brdweb/podman-manager" \
+            TXZ_PATH="dist/podman-manager-${{ inputs.version }}-x86_64-1.txz" \
+            OUTPUT_PATH="podman-manager.plg" \
+            ./scripts/generate-plg.sh
+
+      - name: Update CHANGES in .plg
+        run: |
+          cd unraid-plugin
+          # Update the CHANGES section with recent commits
+          CHANGES=$(git log --oneline -10 --pretty=format:"- %s" | head -10)
+          sed -i "/<CHANGES>/,/<\/CHANGES>/c<CHANGES>\n### ${{ inputs.version }}\n${CHANGES}\n</CHANGES>" podman-manager.plg || true
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ inputs.version }}
+          name: v${{ inputs.version }}
+          body: |
+            ## Podman Manager ${{ inputs.version }}
+            
+            ### Changes
+            - Snapshot cache with configurable TTL (reduces SSH polling)
+            - WebSocket event streaming for real-time container updates
+            - SSH host key verification (strict/accept-new/off modes)
+            - Container removal with force option
+            - Image management (list, pull, remove, prune)
+            - Real-time log streaming via WebSocket
+            - Version display in webapp header
+            - Structured JSON logging (slog)
+            
+            ### Downloads
+            - **Unraid Plugin**: Download the .txz file and install manually, or use the .plg URL from Community Applications
+            - **Docker Image**: `ghcr.io/brdweb/podman-manager:latest`
+          files: |
+            unraid-plugin/dist/podman-manager-${{ inputs.version }}-x86_64-1.txz
+            unraid-plugin/podman-manager.plg
+          draft: false
+          prerelease: false
+
+      - name: Commit updated .plg to main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add unraid-plugin/podman-manager.plg
+          git commit -m "chore: update .plg for v${{ inputs.version }}" || echo "No changes to commit"
+          git push origin main || echo "Nothing to push"

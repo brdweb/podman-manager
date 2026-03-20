@@ -16,9 +16,17 @@
 
 <CHANGES>
 ### @VERSION@
-- Define the Podman dashboard tile through Unraid's native custom tile registration flow
-- Route Quadlet dashboard actions through systemd service targets for reliable control
-- Keep dashboard quick actions and summary counts available inside the standard widget layout
+- Add snapshot cache with configurable TTL to reduce SSH polling
+- Add WebSocket event streaming for real-time container updates
+- Add SSH host key verification (strict/accept-new/off modes)
+- Add container removal with force option
+- Add image management (list, pull, remove, prune)
+- Add real-time log streaming via WebSocket
+- Add version display in webapp header
+- Add structured JSON logging (slog)
+- Fix host info and memory stats loading
+- Fix container row click and expansion panel layout
+- Fix config save "device or resource busy" error
 </CHANGES>
 
 <FILE Name="&pluginLOC;/&name;-&version;-x86_64-1.txz" Run="upgradepkg --install-new">
