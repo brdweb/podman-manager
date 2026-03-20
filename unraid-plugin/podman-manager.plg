@@ -16,7 +16,10 @@
 
 <CHANGES>
 ### 2026.03.20
-- chore: update .plg for v2026.03.20
+- Add container update check and update functionality
+- Show orange "Update Available" badge on container rows
+- Add Update action button with confirmation dialog
+- Periodic update checking for running containers
 </CHANGES>
 
 <FILE Name="&pluginLOC;/&name;-&version;-x86_64-1.txz" Run="upgradepkg --install-new">

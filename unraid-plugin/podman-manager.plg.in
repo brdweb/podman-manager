@@ -16,6 +16,10 @@
 
 <CHANGES>
 ### @VERSION@
+- Add container update check and update functionality
+- Show orange "Update Available" badge on container rows
+- Add Update action button with confirmation dialog
+- Periodic update checking for running containers
 - Add snapshot cache with configurable TTL to reduce SSH polling
 - Add WebSocket event streaming for real-time container updates
 - Add SSH host key verification (strict/accept-new/off modes)
