@@ -167,8 +167,6 @@ func getTempDir() string {
 }
 
 func writeConfigAtomically(path string, data []byte) error {
-	// Use the config file's directory for temp files to avoid cross-filesystem rename issues
-	// (e.g., when /tmp is tmpfs and config is on a different filesystem like /boot on Unraid)
 	dir := filepath.Dir(path)
 	if dir == "" {
 		dir = getTempDir()
@@ -180,18 +178,27 @@ func writeConfigAtomically(path string, data []byte) error {
 	}
 
 	tmpPath := tmp.Name()
-	defer os.Remove(tmpPath)
 
 	if _, err := tmp.Write(data); err != nil {
 		tmp.Close()
+		os.Remove(tmpPath)
 		return fmt.Errorf("writing temp config file: %w", err)
 	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		os.Remove(tmpPath)
+		return fmt.Errorf("syncing temp config file: %w", err)
+	}
 	if err := tmp.Close(); err != nil {
+		os.Remove(tmpPath)
 		return fmt.Errorf("closing temp config file: %w", err)
 	}
 
 	if err := os.Rename(tmpPath, path); err != nil {
-		return fmt.Errorf("replacing config file: %w", err)
+		os.Remove(tmpPath)
+		if err := os.WriteFile(path, data, 0644); err != nil {
+			return fmt.Errorf("writing config file: %w", err)
+		}
 	}
 
 	return nil

@@ -1531,6 +1531,19 @@ func mustParseFloat(value string) float64 {
 	return parsed
 }
 
+func formatBytes(bytes uint64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	div, exp := uint64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %ciB", float64(bytes)/float64(div), "KMGTPE"[exp])
+}
+
 // sanitizeID strips anything that isn't alphanumeric, dash, underscore, or dot
 // to prevent command injection via container ID/name parameters.
 func sanitizeID(id string) string {
@@ -1586,13 +1599,12 @@ type podmanPSEntry struct {
 
 type podmanImageEntry struct {
 	ID           string      `json:"Id"`
-	Repository   string      `json:"Repository"`
-	Tag          string      `json:"Tag"`
+	Names        []string    `json:"Names"`
 	Digest       string      `json:"Digest"`
 	CreatedAt    string      `json:"CreatedAt"`
 	CreatedSince string      `json:"CreatedSince"`
 	Created      interface{} `json:"Created"`
-	Size         string      `json:"Size"`
+	Size         int64       `json:"Size"`
 }
 
 func (p *podmanImageEntry) toImage() Image {
@@ -1601,14 +1613,29 @@ func (p *podmanImageEntry) toImage() Image {
 		created = parsePodmanTime(p.CreatedAt)
 	}
 
+	repository := "<none>"
+	tag := "<none>"
+	if len(p.Names) > 0 && p.Names[0] != "" {
+		parts := strings.SplitN(p.Names[0], ":", 2)
+		repository = parts[0]
+		if len(parts) > 1 {
+			tag = parts[1]
+		}
+	}
+
+	var sizeStr string
+	if p.Size > 0 {
+		sizeStr = formatBytes(uint64(p.Size))
+	}
+
 	return Image{
 		ID:         p.ID,
-		Repository: p.Repository,
-		Tag:        p.Tag,
+		Repository: repository,
+		Tag:        tag,
 		Digest:     p.Digest,
 		Created:    created,
 		CreatedAgo: p.CreatedSince,
-		Size:       p.Size,
+		Size:       sizeStr,
 	}
 }
 
