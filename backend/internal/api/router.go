@@ -21,6 +21,7 @@ type Server struct {
 	mux        *http.ServeMux
 	sessions   *sessionStore
 	logger     *slog.Logger
+	version    string
 
 	eventsMu      sync.RWMutex
 	eventClients  map[*eventClient]struct{}
@@ -31,7 +32,7 @@ type eventClient struct {
 	ch chan podman.PodmanEvent
 }
 
-func NewServer(configPath string, cfg *config.Config, logger *slog.Logger) (*Server, error) {
+func NewServer(configPath string, cfg *config.Config, logger *slog.Logger, version string) (*Server, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -48,6 +49,7 @@ func NewServer(configPath string, cfg *config.Config, logger *slog.Logger) (*Ser
 		pool:         pool,
 		sessions:     newSessionStore(),
 		logger:       logger,
+		version:      version,
 		eventClients: make(map[*eventClient]struct{}),
 	}
 
@@ -97,6 +99,7 @@ func (s *Server) Close() {
 
 func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /api/health", s.handleHealth)
+	s.mux.HandleFunc("GET /api/version", s.handleVersion)
 	s.mux.HandleFunc("GET /api/auth/session", s.handleSession)
 	s.mux.HandleFunc("POST /api/auth/login", s.handleLogin)
 	s.mux.HandleFunc("POST /api/auth/logout", s.handleLogout)

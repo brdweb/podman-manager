@@ -1,5 +1,6 @@
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { useLogout, useSession } from '../hooks/useAuth';
+import { useQuery } from '@tanstack/react-query';
 
 const navItems = [
   { to: '/', label: 'Dashboard' },
@@ -9,10 +10,22 @@ const navItems = [
   { to: '/admin', label: 'Admin' },
 ];
 
+async function getVersion(): Promise<string> {
+  const res = await fetch('/api/version');
+  if (!res.ok) throw new Error('Failed to fetch version');
+  const data = await res.json();
+  return data.version;
+}
+
 export function Layout() {
   const location = useLocation();
   const { data: session } = useSession();
   const logout = useLogout();
+  const { data: version } = useQuery({
+    queryKey: ['version'],
+    queryFn: getVersion,
+    staleTime: Infinity,
+  });
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -45,18 +58,23 @@ export function Layout() {
           </nav>
           </div>
 
-          {session?.enabled && (
-            <div className="flex items-center gap-3 text-sm text-zinc-400">
-              <span>{session.username}</span>
-              <button
-                type="button"
-                onClick={() => logout.mutate()}
-                className="rounded-md border border-zinc-700 px-3 py-1.5 text-zinc-300 transition-colors hover:border-zinc-500 hover:text-zinc-100"
-              >
-                Sign out
-              </button>
-            </div>
-          )}
+          <div className="flex items-center gap-4">
+            {version && (
+              <span className="text-xs text-zinc-500 font-mono">v{version}</span>
+            )}
+            {session?.enabled && (
+              <div className="flex items-center gap-3 text-sm text-zinc-400">
+                <span>{session.username}</span>
+                <button
+                  type="button"
+                  onClick={() => logout.mutate()}
+                  className="rounded-md border border-zinc-700 px-3 py-1.5 text-zinc-300 transition-colors hover:border-zinc-500 hover:text-zinc-100"
+                >
+                  Sign out
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 

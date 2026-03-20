@@ -41,6 +41,12 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{
+		"version": s.version,
+	})
+}
+
 func (s *Server) handleListHosts(w http.ResponseWriter, r *http.Request) {
 	client := s.clientSnapshot()
 	hostNames := client.HostNames()

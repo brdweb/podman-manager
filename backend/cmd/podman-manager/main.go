@@ -42,7 +42,7 @@ func main() {
 		logger.Info("configured host", "name", h.Name, "user", h.User, "address", h.Address, "mode", h.Mode)
 	}
 
-	server, err := api.NewServer(*configPath, cfg, logger)
+	server, err := api.NewServer(*configPath, cfg, logger, version)
 	if err != nil {
 		logger.Error("failed to initialize API server", "error", err)
 		os.Exit(1)
