@@ -53,6 +53,23 @@ $refreshInterval = $cfg['REFRESH_INTERVAL'] ?? '10000';
   <pre id="podman-log-content" class="podman-logs"></pre>
 </div>
 
+<div id="podman-update-dialog" style="display:none">
+  <div class="podman-dialog-overlay" onclick="podmanCloseUpdateDialog()">
+    <div class="podman-dialog-box" onclick="event.stopPropagation()">
+      <div class="podman-dialog-title">Update Container</div>
+      <div class="podman-dialog-body">
+        Are you sure you want to update <code id="podman-update-name"></code>?<br>
+        <br>
+        This will pull the latest image and recreate the container.
+      </div>
+      <div class="podman-dialog-actions">
+        <button class="podman-dialog-btn" onclick="podmanCloseUpdateDialog()">Cancel</button>
+        <button class="podman-dialog-btn podman-dialog-confirm" id="podman-update-confirm" onclick="podmanConfirmUpdate()">Update</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 var podmanProxy = '/plugins/podman-manager/include/Events.php';
 function podmanApi(path) {
@@ -64,6 +81,9 @@ var podmanData = null;
 var podmanOpenDetail = null;
 var podmanSortCol = 'name';
 var podmanSortAsc = true;
+var podmanUpdateStatus = {};  // { 'host/containerId': { update_available: bool, checking: bool } }
+var podmanUpdateCheckTimer = null;
+var podmanPendingUpdate = null;  // { host, containerId, name }
 
 function podmanLoadList() {
   $.getJSON(podmanApi('/overview'), function(data) {
@@ -71,6 +91,7 @@ function podmanLoadList() {
     podmanRenderList(data);
     podmanRenderBadges(data);
     podmanRenderSummary(data);
+    podmanScheduleUpdateChecks(data);
   }).fail(function() {
     $('#podman_tbody').html(
       '<tr><td colspan="7" style="text-align:center;color:#e04040">' +
@@ -79,6 +100,36 @@ function podmanLoadList() {
     );
   }).always(function() {
     podmanTimer = setTimeout(podmanLoadList, podmanRefreshMs);
+  });
+}
+
+function podmanScheduleUpdateChecks(data) {
+  if (!data || !data.hosts) return;
+  
+  data.hosts.forEach(function(host) {
+    if (host.status !== 'online' || !host.containers) return;
+    
+    host.containers.forEach(function(ct) {
+      if (ct.state !== 'running') return;
+      
+      var key = host.name + '/' + ct.id;
+      if (podmanUpdateStatus[key]) return;  // Already checked or checking
+      
+      podmanUpdateStatus[key] = { checking: true };
+      $.getJSON(podmanApi('/hosts/' + host.name + '/containers/' + encodeURIComponent(ct.id) + '/update-check'),
+        function(result) {
+          podmanUpdateStatus[key] = {
+            update_available: result.update_available || false,
+            checking: false,
+            local_digest: result.local_digest,
+            remote_digest: result.remote_digest
+          };
+          podmanRenderList(podmanData);
+        }
+      ).fail(function() {
+        podmanUpdateStatus[key] = { checking: false, error: true };
+      });
+    });
   });
 }
 
@@ -173,6 +224,13 @@ function podmanRenderList(data) {
       managerBadge = ' <span class="podman-mgr-badge podman-mgr-compose" title="Managed by Compose">C</span>';
     }
 
+    var updateKey = hostName + '/' + ct.id;
+    var updateInfo = podmanUpdateStatus[updateKey];
+    var updateBadge = '';
+    if (updateInfo && updateInfo.update_available) {
+      updateBadge = ' <span class="podman-update-badge" title="Update available"><i class="fa fa-arrow-up"></i> Update</span>';
+    }
+
     var actions = '';
     if (ct.state === 'running') {
       actions = '<button class="podman-action-btn" onclick="podmanAction(\'' + hostName + '\',\'' + ct.id + '\',\'stop\'); event.stopPropagation(); return false;" title="Stop"><i class="fa fa-stop"></i></button>' +
@@ -181,6 +239,10 @@ function podmanRenderList(data) {
       actions = '<button class="podman-action-btn" onclick="podmanAction(\'' + hostName + '\',\'' + ct.id + '\',\'start\'); event.stopPropagation(); return false;" title="Start"><i class="fa fa-play"></i></button>';
     }
     actions += '<button class="podman-action-btn" onclick="podmanShowLogs(\'' + hostName + '\',\'' + ct.id + '\'); event.stopPropagation(); return false;" title="Logs"><i class="fa fa-file-text-o"></i></button>';
+    
+    if (updateInfo && updateInfo.update_available) {
+      actions += '<button class="podman-action-btn podman-update-btn" onclick="podmanShowUpdateDialog(\'' + hostName + '\',\'' + ct.id + '\',\'' + ct.name + '\'); event.stopPropagation(); return false;" title="Update available"><i class="fa fa-arrow-up"></i></button>';
+    }
 
     html += '<tr class="podman-ct-row" data-host="' + hostName + '" data-id="' + ct.id + '" ' +
       'data-name="' + ct.name + '" data-state="' + ct.state + '" ' +
@@ -189,7 +251,7 @@ function podmanRenderList(data) {
       '<td class="podman-ct-name">' +
         '<i class="fa ' + stateIcon + ' ' + stateClass + '"></i> ' +
         '<a href="#">' +
-        ct.name + '</a>' + managerBadge + '</td>' +
+        ct.name + '</a>' + managerBadge + updateBadge + '</td>' +
       '<td>' + hostName + '</td>' +
       '<td><span class="' + stateClass + '">' + ct.status + '</span></td>' +
       '<td class="podman-image">' + shortImage + '</td>' +
@@ -461,6 +523,56 @@ function podmanUpdateSortIcons() {
 $('#podman-filter').on('input', function() {
   if (podmanData) podmanRenderList(podmanData);
 });
+
+function podmanShowUpdateDialog(host, containerId, name) {
+  podmanPendingUpdate = { host: host, containerId: containerId, name: name };
+  $('#podman-update-name').text(name);
+  $('#podman-update-dialog').show();
+}
+
+function podmanCloseUpdateDialog() {
+  $('#podman-update-dialog').hide();
+  podmanPendingUpdate = null;
+}
+
+function podmanConfirmUpdate() {
+  if (!podmanPendingUpdate) return;
+  
+  var host = podmanPendingUpdate.host;
+  var containerId = podmanPendingUpdate.containerId;
+  var name = podmanPendingUpdate.name;
+  
+  podmanCloseUpdateDialog();
+  
+  var $row = $('.podman-ct-row[data-host="' + host + '"][data-name="' + containerId + '"]');
+  var $icon = $row.find('.podman-ct-name i');
+  var origClass = $icon.attr('class');
+  $icon.attr('class', 'fa fa-refresh fa-spin');
+  
+  $.post(podmanApi('/hosts/' + host + '/containers/' + encodeURIComponent(containerId) + '/update'),
+    function(data) {
+      if (data && data.success) {
+        delete podmanUpdateStatus[host + '/' + containerId];
+        if (typeof swal !== 'undefined') {
+          swal('Success', data.message || 'Container updated successfully', 'success');
+        } else {
+          alert(data.message || 'Container updated successfully');
+        }
+      } else {
+        if (typeof swal !== 'undefined') {
+          swal('Error', data.error || 'Update failed', 'error');
+        } else {
+          alert('Error: ' + (data.error || 'Update failed'));
+        }
+        $icon.attr('class', origClass);
+      }
+      setTimeout(podmanLoadList, 1500);
+    }
+  ).fail(function() {
+    $icon.attr('class', origClass);
+    alert('Failed to update container');
+  });
+}
 
 $(function() {
   podmanLoadList();
