@@ -173,16 +173,18 @@ func (c *Client) fetchHostSystemInfo(ctx context.Context, hostName string) (*Hos
 		return nil, err
 	}
 
-	cmd := `sh -lc 'hostname=$(hostname 2>/dev/null || true); ` +
-		`os=$(awk -F= '\''/^PRETTY_NAME=/{gsub(/"/,"",$2); print $2}'\'' /etc/os-release 2>/dev/null || true); ` +
-		`kernel=$(uname -sr 2>/dev/null || true); ` +
-		`uptime=$(cut -d. -f1 /proc/uptime 2>/dev/null || echo 0); ` +
-		`mem_total=$(awk '\''/MemTotal/ {print $2}'\'' /proc/meminfo 2>/dev/null || echo 0); ` +
-		`mem_avail=$(awk '\''/MemAvailable/ {print $2}'\'' /proc/meminfo 2>/dev/null || echo 0); ` +
-		`load=$(cut -d\" \" -f1-3 /proc/loadavg 2>/dev/null || echo \"0 0 0\"); ` +
-		`cores=$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 0); ` +
-		`disk=$(df -B1 / 2>/dev/null | awk '\''NR==2 {print $2\"|\"$3\"|\"$4}'\'' || true); ` +
-		`printf \"hostname=%s\nos=%s\nkernel=%s\nuptime=%s\nmem_total_kb=%s\nmem_avail_kb=%s\nload=%s\ncpu_cores=%s\ndisk=%s\n\" \"$hostname\" \"$os\" \"$kernel\" \"$uptime\" \"$mem_total\" \"$mem_avail\" \"$load\" \"$cores\" \"$disk\"'`
+	cmd := `sh -c '
+hostname=$(hostname 2>/dev/null || echo "unknown")
+os=$(cat /etc/os-release 2>/dev/null | grep "^PRETTY_NAME=" | cut -d= -f2- | tr -d "\"")
+kernel=$(uname -sr 2>/dev/null || echo "unknown")
+uptime=$(cat /proc/uptime 2>/dev/null | cut -d. -f1 || echo 0)
+mem_total=$(cat /proc/meminfo 2>/dev/null | grep "^MemTotal:" | awk "{print \$2}" || echo 0)
+mem_avail=$(cat /proc/meminfo 2>/dev/null | grep "^MemAvailable:" | awk "{print \$2}" || echo 0)
+load=$(cat /proc/loadavg 2>/dev/null | awk "{print \$1, \$2, \$3}" || echo "0 0 0")
+cores=$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 0)
+disk=$(df -B1 / 2>/dev/null | awk "NR==2 {print \$2\"|\"\$3\"|\"\$4}" || echo "0|0|0")
+printf "hostname=%s\nos=%s\nkernel=%s\nuptime=%s\nmem_total_kb=%s\nmem_avail_kb=%s\nload=%s\ncpu_cores=%s\ndisk=%s\n" "$hostname" "$os" "$kernel" "$uptime" "$mem_total" "$mem_avail" "$load" "$cores" "$disk"
+'`
 
 	result, err := conn.Run(ctx, cmd)
 	if err != nil {

@@ -13,24 +13,19 @@ export function useImages(host: string) {
 
 export function useAllImages() {
   const { data: overview } = useOverview();
-  const hosts = overview?.hosts.map((h) => h.name) || [];
+  const onlineHosts = overview?.hosts.filter((h) => h.status === 'online').map((h) => h.name) || [];
 
   return useQuery({
-    queryKey: ['images', 'all'],
+    queryKey: ['images', 'all', onlineHosts.join(',')],
     queryFn: async () => {
-      const promises = hosts.map(async (host) => {
-        try {
-          const images = await getImages(host);
-          return images.map((img) => ({ ...img, host }));
-        } catch (e) {
-          console.error(`Failed to fetch images for host ${host}`, e);
-          return [];
-        }
+      const promises = onlineHosts.map(async (host) => {
+        const images = await getImages(host);
+        return images.map((img) => ({ ...img, host }));
       });
       const results = await Promise.all(promises);
       return results.flat();
     },
-    enabled: hosts.length > 0,
+    enabled: onlineHosts.length > 0,
     refetchInterval: 30_000,
   });
 }

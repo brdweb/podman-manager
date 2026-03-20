@@ -28,7 +28,7 @@ export function HostCard({ host }: HostCardProps) {
         </div>
       )}
 
-      {host.system && (
+      {host.system ? (
         <div className="mt-4 grid gap-2 border-t border-zinc-800 pt-4 text-xs text-zinc-500">
           <p>{host.system.os || 'Unknown OS'}</p>
           <p>
@@ -42,6 +42,10 @@ export function HostCard({ host }: HostCardProps) {
               : '-'}
           </p>
           <p>Uptime {formatUptime(host.system.uptime_seconds)}</p>
+        </div>
+      ) : host.status === 'online' && (
+        <div className="mt-4 border-t border-zinc-800 pt-4 text-xs text-zinc-500">
+          <p className="text-amber-500">System info unavailable</p>
         </div>
       )}
 

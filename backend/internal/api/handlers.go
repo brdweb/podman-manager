@@ -261,7 +261,11 @@ func (s *Server) handleContainerLogsStream(w http.ResponseWriter, r *http.Reques
 		case <-ctx.Done():
 			return
 		case line := <-logsCh:
-			if err := ws.WriteMessage(websocket.TextMessage, []byte(line)); err != nil {
+			logEntry := map[string]string{
+				"timestamp": time.Now().UTC().Format(time.RFC3339Nano),
+				"message":   line,
+			}
+			if err := ws.WriteJSON(logEntry); err != nil {
 				cancel()
 				return
 			}

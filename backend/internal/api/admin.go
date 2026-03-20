@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"golang.org/x/crypto/bcrypt"
@@ -166,7 +167,14 @@ func getTempDir() string {
 }
 
 func writeConfigAtomically(path string, data []byte) error {
-	tmp, err := os.CreateTemp(getTempDir(), "podman-manager-*.yaml")
+	// Use the config file's directory for temp files to avoid cross-filesystem rename issues
+	// (e.g., when /tmp is tmpfs and config is on a different filesystem like /boot on Unraid)
+	dir := filepath.Dir(path)
+	if dir == "" {
+		dir = getTempDir()
+	}
+
+	tmp, err := os.CreateTemp(dir, "podman-manager-*.yaml")
 	if err != nil {
 		return fmt.Errorf("creating temp config file: %w", err)
 	}
