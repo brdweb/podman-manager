@@ -229,63 +229,131 @@
   font-size: 0.9em;
 }
 
-.podman-detail-row td {
-  padding: 0 !important;
+.podman-detail-row > td {
+  padding: 0;
   border-bottom: 1px solid var(--border-color, #333);
 }
 .podman-inline-detail {
-  padding: 12px 16px;
+  padding: 14px 16px;
   background: rgba(255, 255, 255, 0.02);
   border-top: 1px solid var(--border-color, #333);
 }
+.podman-detail-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.podman-detail-title {
+  font-size: 0.95em;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
 .podman-detail-close {
   text-align: right;
-  margin-bottom: 8px;
 }
 .podman-detail-close a {
   color: inherit;
-  opacity: 0.6;
+  opacity: 0.65;
   text-decoration: none;
   font-size: 0.85em;
 }
 .podman-detail-close a:hover {
   opacity: 1;
 }
-.podman-detail-layout {
-  width: 100%;
-  border-collapse: collapse;
-  table-layout: fixed;
+.podman-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(260px, 1fr);
+  gap: 12px;
 }
-.podman-detail-cell {
-  padding: 10px 14px;
-  vertical-align: top;
+.podman-detail-card {
   border: 1px solid var(--border-color, #333);
-  word-wrap: break-word;
-  overflow-wrap: anywhere;
-  line-height: 1.5;
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.12);
+  min-width: 0;
 }
-.podman-detail-runtime {
-  width: 33%;
-}
-.podman-detail-networking {
-  width: 67%;
+.podman-detail-card-full {
+  grid-column: 1 / -1;
 }
 .podman-detail-section-title {
   font-weight: 600;
-  font-size: 1.05em;
+  font-size: 0.9em;
   margin-bottom: 8px;
   color: inherit;
-  border-bottom: 1px solid var(--border-color, #333);
-  padding-bottom: 4px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  opacity: 0.9;
+}
+.podman-kv-row {
+  display: grid;
+  grid-template-columns: minmax(110px, 140px) 1fr;
+  gap: 10px;
+  padding: 3px 0;
+  align-items: start;
+}
+.podman-kv-row + .podman-kv-row {
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+.podman-kv-row-block {
+  grid-template-columns: 1fr;
+  gap: 4px;
+  padding-top: 8px;
+}
+.podman-kv-key {
+  font-size: 0.82em;
+  font-weight: 600;
+  opacity: 0.78;
+  white-space: nowrap;
+}
+.podman-kv-value {
+  font-family: monospace;
+  font-size: 0.83em;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.podman-detail-list {
+  margin: 0;
+  padding-left: 16px;
+}
+.podman-detail-list li {
+  margin: 2px 0;
+  line-height: 1.4;
+}
+.podman-empty {
+  opacity: 0.7;
+  font-style: italic;
+}
+.podman-label-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 .podman-label {
   display: inline-block;
   font-family: monospace;
-  font-size: 0.85em;
+  font-size: 0.79em;
   background: rgba(255, 255, 255, 0.06);
-  padding: 1px 6px;
-  border-radius: 3px;
-  margin: 1px 0;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1100px) {
+  .podman-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .podman-kv-row {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+
+  .podman-kv-key {
+    white-space: normal;
+  }
 }
 
 #podman-header {

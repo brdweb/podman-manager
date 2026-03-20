@@ -20,11 +20,22 @@
 - Show orange "Update Available" badge on container rows
 - Add Update action button with confirmation dialog
 - Periodic update checking for running containers
+- Add snapshot cache with configurable TTL to reduce SSH polling
+- Add WebSocket event streaming for real-time container updates
+- Add SSH host key verification (strict/accept-new/off modes)
+- Add container removal with force option
+- Add image management (list, pull, remove, prune)
+- Add real-time log streaming via WebSocket
+- Add version display in webapp header
+- Add structured JSON logging (slog)
+- Fix host info and memory stats loading
+- Fix container row click and expansion panel layout
+- Fix config save "device or resource busy" error
 </CHANGES>
 
 <FILE Name="&pluginLOC;/&name;-&version;-x86_64-1.txz" Run="upgradepkg --install-new">
   <URL>https://github.com/&github;/releases/download/v&version;/&name;-&version;-x86_64-1.txz</URL>
-  <SHA256>c430372fb12f1a17910dd0513c15e89f617a4d55f0ea37b112167c27cca3aac2</SHA256>
+  <SHA256>460378e8b9b6079154f2f1c1771b99b4796e31656f79f7a37cf67aa094d0d0ba</SHA256>
 </FILE>
 
 <FILE Run="/bin/bash">

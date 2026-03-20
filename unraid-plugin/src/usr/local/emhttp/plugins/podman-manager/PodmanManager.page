@@ -299,6 +299,46 @@ function podmanToggleDetail(host, name, el) {
   podmanFetchDetail(key);
 }
 
+function podmanEscapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function podmanDetailRow(label, value) {
+  var safeValue = value;
+  if (safeValue === null || safeValue === undefined || safeValue === '') {
+    safeValue = 'N/A';
+  }
+  return '<div class="podman-kv-row">' +
+    '<div class="podman-kv-key">' + podmanEscapeHtml(label) + '</div>' +
+    '<div class="podman-kv-value">' + podmanEscapeHtml(safeValue) + '</div>' +
+    '</div>';
+}
+
+function podmanDetailRowHtml(label, htmlValue) {
+  return '<div class="podman-kv-row podman-kv-row-block">' +
+    '<div class="podman-kv-key">' + podmanEscapeHtml(label) + '</div>' +
+    '<div class="podman-kv-value">' + htmlValue + '</div>' +
+    '</div>';
+}
+
+function podmanRenderDetailList(items, emptyText) {
+  if (!items || items.length === 0) {
+    return '<div class="podman-empty">' + podmanEscapeHtml(emptyText || 'None') + '</div>';
+  }
+
+  var list = '<ul class="podman-detail-list">';
+  items.forEach(function(item) {
+    list += '<li>' + podmanEscapeHtml(item) + '</li>';
+  });
+  list += '</ul>';
+  return list;
+}
+
 function podmanFetchDetail(key) {
   var parts = key.split('/');
   var host = parts[0];
@@ -308,64 +348,72 @@ function podmanFetchDetail(key) {
     var $detailRow = $('tr[data-detail-key="' + key + '"]');
     if (!$detailRow.length) return;
 
-    var html = '<div class="podman-inline-detail">';
-    html += '<div class="podman-detail-close"><a href="#" onclick="podmanCloseDetail(); return false;"><i class="fa fa-times"></i> Close</a></div>';
-    html += '<table class="podman-detail-layout">';
-    
-    html += '<tr>';
-    html += '<td class="podman-detail-cell podman-detail-runtime">';
-    html += '<div class="podman-detail-section-title">Runtime</div>';
-    html += '<strong>Image:</strong> ' + data.image + '<br>';
-    html += '<strong>State:</strong> ' + data.state + ' (PID: ' + (data.pid || 'N/A') + ')<br>';
-    html += '<strong>Hostname:</strong> ' + (data.hostname || 'N/A') + '<br>';
-    html += '<strong>Restart Policy:</strong> ' + (data.restart_policy || 'none') + '<br>';
-    html += '<strong>Network Mode:</strong> ' + (data.network_mode || 'N/A') + '<br>';
+    var labelsHtml = '<div class="podman-empty">None</div>';
     if (data.labels && Object.keys(data.labels).length > 0) {
-      html += '<strong>Labels:</strong><br>';
+      labelsHtml = '<div class="podman-label-grid">';
       Object.keys(data.labels).sort().forEach(function(k) {
-        html += '<span class="podman-label">' + k + '=' + data.labels[k] + '</span> ';
+        labelsHtml += '<span class="podman-label">' + podmanEscapeHtml(k + '=' + data.labels[k]) + '</span>';
       });
-      html += '<br>';
+      labelsHtml += '</div>';
     }
-    html += '</td>';
-    
-    html += '<td class="podman-detail-cell podman-detail-networking">';
-    html += '<div class="podman-detail-section-title">Networking</div>';
+
+    var networkItems = [];
     if (data.networks && data.networks.length > 0) {
-      html += '<strong>Networks:</strong><br>';
       data.networks.forEach(function(n) {
-        html += '&nbsp;&nbsp;' + n.name + ': ' + (n.ip || 'no IP') + ' (gw: ' + (n.gateway || 'none') + ')<br>';
+        networkItems.push((n.name || 'unknown') + ': ' + (n.ip || 'no IP') + ' (gw: ' + (n.gateway || 'none') + ')');
       });
-    } else {
-      html += '<strong>Networks:</strong> None<br>';
     }
-    
+
+    var portItems = [];
     if (data.ports && data.ports.length > 0) {
-      html += '<strong>Ports:</strong><br>';
       data.ports.forEach(function(p) {
-        html += '&nbsp;&nbsp;' + (p.host_ip || '0.0.0.0') + ':' + p.host_port + ' &rarr; ' + p.container_port + '/' + p.protocol + '<br>';
+        portItems.push((p.host_ip || '0.0.0.0') + ':' + p.host_port + ' -> ' + p.container_port + '/' + p.protocol);
       });
-    } else {
-      html += '<strong>Ports:</strong> None<br>';
     }
-    html += '</td>';
-    html += '</tr>';
-    
-    html += '<tr>';
-    html += '<td colspan="2" class="podman-detail-cell podman-detail-volumes">';
-    html += '<div class="podman-detail-section-title">Volumes</div>';
+
+    var mountItems = [];
     if (data.mounts && data.mounts.length > 0) {
       data.mounts.forEach(function(m) {
         var rw = m.rw ? 'rw' : 'ro';
-        html += m.source + ' &rarr; ' + m.destination + ' (' + m.type + ', ' + rw + ')<br>';
+        mountItems.push((m.source || 'unknown') + ' -> ' + (m.destination || 'unknown') + ' (' + (m.type || 'bind') + ', ' + rw + ')');
       });
-    } else {
-      html += 'None<br>';
     }
-    html += '</td>';
-    html += '</tr>';
 
-    html += '</table></div>';
+    var runtimeHtml = '';
+    runtimeHtml += podmanDetailRow('Image', data.image);
+    runtimeHtml += podmanDetailRow('State', (data.state || 'unknown') + ' (PID: ' + (data.pid || 'N/A') + ')');
+    runtimeHtml += podmanDetailRow('Hostname', data.hostname || 'N/A');
+    runtimeHtml += podmanDetailRow('Restart Policy', data.restart_policy || 'none');
+    runtimeHtml += podmanDetailRow('Network Mode', data.network_mode || 'N/A');
+    runtimeHtml += podmanDetailRowHtml('Labels', labelsHtml);
+
+    var networkingHtml = '';
+    networkingHtml += podmanDetailRowHtml('Networks', podmanRenderDetailList(networkItems, 'None'));
+    networkingHtml += podmanDetailRowHtml('Ports', podmanRenderDetailList(portItems, 'None'));
+
+    var volumesHtml = podmanRenderDetailList(mountItems, 'None');
+
+    var html = '<div class="podman-inline-detail">';
+    html += '<div class="podman-detail-head">';
+    html += '<div class="podman-detail-title">' + podmanEscapeHtml(data.name || name) + '</div>';
+    html += '<div class="podman-detail-close"><a href="#" onclick="podmanCloseDetail(); return false;"><i class="fa fa-times"></i> Close</a></div>';
+    html += '</div>';
+    html += '<div class="podman-detail-grid">';
+    html += '<section class="podman-detail-card">';
+    html += '<div class="podman-detail-section-title">Runtime</div>';
+    html += runtimeHtml;
+    html += '</section>';
+    html += '<section class="podman-detail-card">';
+    html += '<div class="podman-detail-section-title">Networking</div>';
+    html += networkingHtml;
+    html += '</section>';
+    html += '<section class="podman-detail-card podman-detail-card-full">';
+    html += '<div class="podman-detail-section-title">Volumes</div>';
+    html += volumesHtml;
+    html += '</section>';
+    html += '</div>';
+    html += '</div>';
+
     $detailRow.find('td').html(html);
   });
 }
