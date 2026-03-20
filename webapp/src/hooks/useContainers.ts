@@ -8,6 +8,8 @@ import {
   stopContainer,
   restartContainer,
   removeContainer,
+  checkContainerUpdate,
+  updateContainer,
 } from '../api/containers';
 
 export function useContainers(host: string) {
@@ -88,4 +90,29 @@ export function useContainerAction() {
   });
 
   return { start, stop, restart, remove };
+}
+
+export function useCheckUpdate(host: string, id: string, isRunning: boolean) {
+  return useQuery({
+    queryKey: ['container-update', host, id],
+    queryFn: () => checkContainerUpdate(host, id),
+    enabled: !!host && !!id && isRunning,
+    refetchInterval: 300_000, // 5 minutes
+    staleTime: 60_000, // 1 minute
+  });
+}
+
+export function useUpdateContainer() {
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ host, id }: { host: string; id: string }) =>
+      updateContainer(host, id),
+    onSuccess: (_data, { host, id }) => {
+      void qc.invalidateQueries({ queryKey: ['containers', host] });
+      void qc.invalidateQueries({ queryKey: ['containers', 'all'] });
+      void qc.invalidateQueries({ queryKey: ['overview'] });
+      void qc.invalidateQueries({ queryKey: ['container-update', host, id] });
+    },
+  });
 }

@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import type { Container } from '../types/api';
-import { useContainerAction, useContainerDetail } from '../hooks/useContainers';
+import { useContainerAction, useContainerDetail, useCheckUpdate, useUpdateContainer } from '../hooks/useContainers';
 import { StatusBadge } from './StatusBadge';
 import { formatBytes, formatPercent, formatTimestamp } from '../lib/format';
 import { LogViewer } from './LogViewer';
@@ -83,9 +83,14 @@ function ContainerTableRow({
   onViewLogs,
 }: ContainerTableRowProps) {
   const { start, stop, restart, remove } = useContainerAction();
+  const updateMutation = useUpdateContainer();
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isUpdateDialogOpen, setIsUpdateDialogOpen] = useState(false);
   const isRunning = container.state === 'running';
   const colSpan = showHost ? 7 : 6;
+
+  const { data: updateCheck } = useCheckUpdate(container.host, container.id, isRunning);
+  const hasUpdate = updateCheck?.update_available;
 
   const handleDelete = (force: boolean) => {
     remove.mutate(
@@ -98,6 +103,17 @@ function ContainerTableRow({
     );
   };
 
+  const handleUpdate = () => {
+    updateMutation.mutate(
+      { host: container.host, id: container.id },
+      {
+        onSuccess: () => {
+          setIsUpdateDialogOpen(false);
+        },
+      }
+    );
+  };
+
   return (
     <>
       <tr
@@ -105,11 +121,19 @@ function ContainerTableRow({
         onClick={onToggle}
       >
         <td className="px-4 py-3">
-          <div className="group">
+          <div className="group flex items-center gap-2">
             <span className="font-medium text-zinc-100 group-hover:text-white">
               {container.name}
             </span>
-            <span className="ml-2 text-xs uppercase tracking-[0.2em] text-zinc-500">
+            {hasUpdate && (
+              <span
+                className="inline-flex items-center rounded-full bg-orange-500/10 px-1.5 py-0.5 text-[10px] font-medium text-orange-400 ring-1 ring-inset ring-orange-500/20"
+                title="Update available"
+              >
+                Update Available
+              </span>
+            )}
+            <span className="text-xs uppercase tracking-[0.2em] text-zinc-500">
               {container.manager}
             </span>
           </div>
@@ -168,6 +192,17 @@ function ContainerTableRow({
                    disabled={restart.isPending}
                    variant="neutral"
                  />
+                 {hasUpdate && (
+                   <ActionButton
+                     label="Update"
+                     onClick={(e) => {
+                       e.stopPropagation();
+                       setIsUpdateDialogOpen(true);
+                     }}
+                     disabled={updateMutation.isPending}
+                     variant="warning"
+                   />
+                 )}
                </>
              ) : (
                <>
@@ -225,6 +260,14 @@ function ContainerTableRow({
         onConfirm={handleDelete}
         containerName={container.name}
         isPending={remove.isPending}
+      />
+
+      <UpdateDialog
+        isOpen={isUpdateDialogOpen}
+        onClose={() => setIsUpdateDialogOpen(false)}
+        onConfirm={handleUpdate}
+        containerName={container.name}
+        isPending={updateMutation.isPending}
       />
     </>
   );
@@ -369,13 +412,14 @@ interface ActionButtonProps {
   label: string;
   onClick: (e: React.MouseEvent<HTMLButtonElement>) => void;
   disabled: boolean;
-  variant: 'success' | 'danger' | 'neutral';
+  variant: 'success' | 'danger' | 'neutral' | 'warning';
 }
 
 const variantStyles: Record<ActionButtonProps['variant'], string> = {
   success: 'bg-emerald-600 hover:bg-emerald-500 text-white',
   danger: 'bg-red-600 hover:bg-red-500 text-white',
   neutral: 'bg-zinc-700 hover:bg-zinc-600 text-zinc-200',
+  warning: 'bg-orange-600 hover:bg-orange-500 text-white',
 };
 
 function ActionButton({ label, onClick, disabled, variant }: ActionButtonProps) {
@@ -443,6 +487,53 @@ function DeleteDialog({
             className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500 transition-colors disabled:opacity-50 flex items-center gap-2"
           >
             {isPending ? 'Deleting...' : 'Delete'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function UpdateDialog({
+  isOpen,
+  onClose,
+  onConfirm,
+  containerName,
+  isPending,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  containerName: string;
+  isPending: boolean;
+}) {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-950 p-6 shadow-2xl">
+        <h3 className="text-lg font-medium text-zinc-100">Update Container</h3>
+        <p className="mt-2 text-sm text-zinc-400">
+          Are you sure you want to update <span className="font-mono text-zinc-300">{containerName}</span>?
+          This will pull the latest image and recreate the container.
+        </p>
+
+        <div className="mt-6 flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isPending}
+            className="rounded-lg px-4 py-2 text-sm font-medium text-zinc-300 hover:bg-zinc-900 hover:text-white transition-colors disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={isPending}
+            className="rounded-lg bg-orange-600 px-4 py-2 text-sm font-medium text-white hover:bg-orange-500 transition-colors disabled:opacity-50 flex items-center gap-2"
+          >
+            {isPending ? 'Updating...' : 'Update'}
           </button>
         </div>
       </div>

@@ -4,6 +4,8 @@ import type {
   Container,
   ContainerDetail,
   LogsResponse,
+  UpdateCheckResult,
+  UpdateResult,
 } from '../types/api';
 
 export function getContainers(host: string): Promise<Container[]> {
@@ -67,5 +69,23 @@ export function removeContainer(
 ): Promise<ActionResult> {
   return del<ActionResult>(
     `/api/hosts/${encodeURIComponent(host)}/containers/${encodeURIComponent(id)}?force=${force}`
+  );
+}
+
+export function checkContainerUpdate(
+  host: string,
+  id: string
+): Promise<UpdateCheckResult> {
+  return get<UpdateCheckResult>(
+    `/api/hosts/${encodeURIComponent(host)}/containers/${encodeURIComponent(id)}/update-check`
+  );
+}
+
+export function updateContainer(
+  host: string,
+  id: string
+): Promise<UpdateResult> {
+  return post<UpdateResult>(
+    `/api/hosts/${encodeURIComponent(host)}/containers/${encodeURIComponent(id)}/update`
   );
 }

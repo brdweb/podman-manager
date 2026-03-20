@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"math"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -386,6 +387,105 @@ func (c *Client) RestartContainer(ctx context.Context, hostName, containerID str
 	return c.containerAction(ctx, hostName, containerID, "restart")
 }
 
+func (c *Client) CheckForUpdate(ctx context.Context, hostName, containerID string) (*UpdateCheckResult, error) {
+	container, err := c.containerForUpdate(ctx, hostName, containerID)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &UpdateCheckResult{
+		ContainerID:   container.ID,
+		ContainerName: container.Name,
+		Image:         container.Image,
+	}
+
+	safeRef := sanitizeImageRef(container.Image)
+	if safeRef == "" {
+		result.Error = "container image reference is empty or invalid"
+		return result, nil
+	}
+
+	if !isRegistryImageReference(safeRef) {
+		result.UpdateAvailable = false
+		return result, nil
+	}
+
+	localDigest, err := c.getLocalImageDigest(ctx, hostName, safeRef)
+	if err != nil {
+		result.Error = err.Error()
+		return result, nil
+	}
+	result.LocalDigest = localDigest
+
+	remoteDigest, err := c.getRemoteImageDigest(ctx, hostName, safeRef)
+	if err != nil {
+		result.Error = err.Error()
+		return result, nil
+	}
+	result.RemoteDigest = remoteDigest
+
+	if localDigest != "" && remoteDigest != "" {
+		result.UpdateAvailable = localDigest != remoteDigest
+	}
+
+	return result, nil
+}
+
+func (c *Client) UpdateContainer(ctx context.Context, hostName, containerID string) (*UpdateResult, error) {
+	container, err := c.containerForUpdate(ctx, hostName, containerID)
+	if err != nil {
+		return nil, err
+	}
+
+	imageRef := sanitizeImageRef(container.Image)
+	if imageRef == "" {
+		return &UpdateResult{Success: false, Error: "container image reference is empty or invalid"}, nil
+	}
+
+	oldDigest, _ := c.getLocalImageDigest(ctx, hostName, imageRef)
+	oldImage := imageRef
+	if oldDigest != "" {
+		oldImage = fmt.Sprintf("%s@%s", imageRef, oldDigest)
+	}
+
+	result := &UpdateResult{OldImage: oldImage}
+
+	manager := container.Manager
+	if manager == "" {
+		manager = detectManagerFromLabels(container.Labels)
+	}
+
+	switch manager {
+	case "quadlet":
+		err = c.updateQuadletContainer(ctx, hostName, container, imageRef)
+	case "compose":
+		err = c.updateComposeContainer(ctx, hostName, container, imageRef)
+	default:
+		err = c.updateStandaloneContainer(ctx, hostName, container.ID, imageRef)
+	}
+
+	if err != nil {
+		result.Success = false
+		result.Error = err.Error()
+		return result, nil
+	}
+
+	newDigest, _ := c.getLocalImageDigest(ctx, hostName, imageRef)
+	newImage := imageRef
+	if newDigest != "" {
+		newImage = fmt.Sprintf("%s@%s", imageRef, newDigest)
+	}
+
+	if c.cache != nil {
+		c.cache.Invalidate(hostName)
+	}
+
+	result.Success = true
+	result.NewImage = newImage
+	result.Message = fmt.Sprintf("Container %s updated successfully", container.Name)
+	return result, nil
+}
+
 func (c *Client) RemoveContainer(ctx context.Context, hostName, containerID string, force bool) (*ActionResult, error) {
 	conn, err := c.pool.GetConnection(hostName)
 	if err != nil {
@@ -500,6 +600,439 @@ func (c *Client) getSystemdUnit(ctx context.Context, hostName string, hostCfg co
 		return ""
 	}
 	return unit
+}
+
+func (c *Client) containerForUpdate(ctx context.Context, hostName, containerID string) (*ContainerDetail, error) {
+	safeID := sanitizeID(containerID)
+	if safeID == "" {
+		return nil, fmt.Errorf("invalid container id")
+	}
+
+	if strings.HasPrefix(safeID, "quadlet-") {
+		containers, err := c.ListContainers(ctx, hostName)
+		if err != nil {
+			return nil, err
+		}
+		for _, ct := range containers {
+			if ct.ID == safeID {
+				return &ContainerDetail{Container: ct}, nil
+			}
+		}
+		return nil, fmt.Errorf("container %s not found on %s", safeID, hostName)
+	}
+
+	detail, err := c.InspectContainer(ctx, hostName, safeID)
+	if err != nil {
+		return nil, err
+	}
+
+	if detail.Manager == "" {
+		detail.Manager = detectManagerFromLabels(detail.Labels)
+	}
+
+	return detail, nil
+}
+
+func (c *Client) getLocalImageDigest(ctx context.Context, hostName, imageRef string) (string, error) {
+	conn, err := c.pool.GetConnection(hostName)
+	if err != nil {
+		return "", err
+	}
+
+	hostCfg, _ := c.pool.HostConfig(hostName)
+	cmd := fmt.Sprintf("%s image inspect %s --format '{{if .Digest}}{{.Digest}}{{else}}{{index .RepoDigests 0}}{{end}}'", c.podmanCmd(hostCfg), shellQuote(imageRef))
+	result, err := conn.Run(ctx, cmd)
+	if err != nil {
+		return "", fmt.Errorf("inspecting local image digest on %s: %w", hostName, err)
+	}
+	if result.ExitCode != 0 {
+		return "", fmt.Errorf("podman image inspect failed on %s: %s", hostName, strings.TrimSpace(result.Stderr))
+	}
+
+	return normalizeDigest(strings.TrimSpace(result.Stdout)), nil
+}
+
+func (c *Client) getRemoteImageDigest(ctx context.Context, hostName, imageRef string) (string, error) {
+	conn, err := c.pool.GetConnection(hostName)
+	if err != nil {
+		return "", err
+	}
+
+	remoteRef := "docker://" + imageRef
+	skopeoCmd := fmt.Sprintf("skopeo inspect --format '{{.Digest}}' %s", shellQuote(remoteRef))
+	skopeoResult, err := conn.Run(ctx, skopeoCmd)
+	if err == nil && skopeoResult.ExitCode == 0 {
+		digest := normalizeDigest(strings.TrimSpace(skopeoResult.Stdout))
+		if digest != "" {
+			return digest, nil
+		}
+	}
+
+	hostCfg, _ := c.pool.HostConfig(hostName)
+	manifestCmd := fmt.Sprintf("%s manifest inspect %s", c.podmanCmd(hostCfg), shellQuote(remoteRef))
+	manifestResult, err := conn.Run(ctx, manifestCmd)
+	if err != nil {
+		return "", fmt.Errorf("inspecting remote image digest on %s: %w", hostName, err)
+	}
+	if manifestResult.ExitCode != 0 {
+		stderr := strings.TrimSpace(manifestResult.Stderr)
+		if stderr == "" && skopeoResult.Stderr != "" {
+			stderr = strings.TrimSpace(skopeoResult.Stderr)
+		}
+		if stderr == "" {
+			stderr = "unable to inspect remote image"
+		}
+		return "", fmt.Errorf("remote image inspect failed on %s: %s", hostName, stderr)
+	}
+
+	var manifest struct {
+		Digest string `json:"Digest"`
+	}
+	if err := json.Unmarshal([]byte(manifestResult.Stdout), &manifest); err != nil {
+		return "", fmt.Errorf("parsing remote image digest on %s: %w", hostName, err)
+	}
+
+	digest := normalizeDigest(strings.TrimSpace(manifest.Digest))
+	if digest == "" {
+		return "", fmt.Errorf("remote image digest not found")
+	}
+
+	return digest, nil
+}
+
+func (c *Client) updateQuadletContainer(ctx context.Context, hostName string, container *ContainerDetail, imageRef string) error {
+	hostCfg, _ := c.pool.HostConfig(hostName)
+	conn, err := c.pool.GetConnection(hostName)
+	if err != nil {
+		return err
+	}
+
+	if err := c.PullImage(ctx, hostName, imageRef); err != nil {
+		return err
+	}
+
+	unit := strings.TrimSpace(container.SystemdUnit)
+	if unit == "" {
+		if raw, ok := container.Labels["PODMAN_SYSTEMD_UNIT"]; ok {
+			unit = strings.TrimSpace(raw)
+		}
+	}
+	if unit == "" {
+		if strings.HasPrefix(container.ID, "quadlet-") {
+			unit = strings.TrimPrefix(container.ID, "quadlet-") + ".service"
+		} else {
+			unit = c.getSystemdUnit(ctx, hostName, hostCfg, sanitizeID(container.ID))
+		}
+	}
+	if unit == "" {
+		return fmt.Errorf("unable to determine Quadlet systemd unit")
+	}
+
+	restartCmd := c.systemctlCmd(hostCfg, "restart", shellQuote(unit))
+	restartResult, err := conn.Run(ctx, restartCmd)
+	if err != nil {
+		return fmt.Errorf("restarting Quadlet unit %s on %s: %w", unit, hostName, err)
+	}
+	if restartResult.ExitCode != 0 {
+		return fmt.Errorf("systemctl restart failed on %s: %s", hostName, strings.TrimSpace(restartResult.Stderr))
+	}
+
+	return nil
+}
+
+func (c *Client) updateComposeContainer(ctx context.Context, hostName string, container *ContainerDetail, imageRef string) error {
+	conn, err := c.pool.GetConnection(hostName)
+	if err != nil {
+		return err
+	}
+
+	composeDir := strings.TrimSpace(firstNonEmpty(
+		container.Labels["com.docker.compose.project.working_dir"],
+		container.Labels["io.podman.compose.project.working_dir"],
+	))
+
+	if composeDir == "" {
+		return c.updateStandaloneContainer(ctx, hostName, container.ID, imageRef)
+	}
+
+	composeCmd := fmt.Sprintf("sh -lc \"cd %s && podman-compose pull && podman-compose up -d\"", shellQuote(composeDir))
+	result, err := conn.Run(ctx, composeCmd)
+	if err != nil {
+		return fmt.Errorf("running podman-compose update on %s: %w", hostName, err)
+	}
+	if result.ExitCode != 0 {
+		return fmt.Errorf("podman-compose update failed on %s: %s", hostName, strings.TrimSpace(result.Stderr))
+	}
+
+	return nil
+}
+
+func (c *Client) updateStandaloneContainer(ctx context.Context, hostName, containerID, imageRef string) error {
+	entry, err := c.inspectContainerEntry(ctx, hostName, containerID)
+	if err != nil {
+		return err
+	}
+
+	conn, err := c.pool.GetConnection(hostName)
+	if err != nil {
+		return err
+	}
+
+	hostCfg, _ := c.pool.HostConfig(hostName)
+
+	if err := c.PullImage(ctx, hostName, imageRef); err != nil {
+		return err
+	}
+
+	if entry.State.Running {
+		stopCmd := fmt.Sprintf("%s stop %s", c.podmanCmd(hostCfg), shellQuote(entry.ID))
+		stopResult, err := conn.Run(ctx, stopCmd)
+		if err != nil {
+			return fmt.Errorf("stopping container %s on %s: %w", entry.ID, hostName, err)
+		}
+		if stopResult.ExitCode != 0 {
+			return fmt.Errorf("stopping container %s failed on %s: %s", entry.ID, hostName, strings.TrimSpace(stopResult.Stderr))
+		}
+	}
+
+	rmCmd := fmt.Sprintf("%s rm %s", c.podmanCmd(hostCfg), shellQuote(entry.ID))
+	rmResult, err := conn.Run(ctx, rmCmd)
+	if err != nil {
+		return fmt.Errorf("removing container %s on %s: %w", entry.ID, hostName, err)
+	}
+	if rmResult.ExitCode != 0 {
+		return fmt.Errorf("removing container %s failed on %s: %s", entry.ID, hostName, strings.TrimSpace(rmResult.Stderr))
+	}
+
+	runCmd, networks := buildStandaloneRunCommand(c.podmanCmd(hostCfg), &entry, imageRef)
+	runResult, err := conn.Run(ctx, runCmd)
+	if err != nil {
+		return fmt.Errorf("recreating container %s on %s: %w", entry.ID, hostName, err)
+	}
+	if runResult.ExitCode != 0 {
+		return fmt.Errorf("recreating container %s failed on %s: %s", entry.ID, hostName, strings.TrimSpace(runResult.Stderr))
+	}
+
+	containerName := strings.TrimPrefix(entry.Name, "/")
+	for _, network := range networks {
+		connectCmd := fmt.Sprintf("%s network connect %s %s", c.podmanCmd(hostCfg), shellQuote(network), shellQuote(containerName))
+		connectResult, err := conn.Run(ctx, connectCmd)
+		if err != nil {
+			return fmt.Errorf("connecting container %s to network %s on %s: %w", containerName, network, hostName, err)
+		}
+		if connectResult.ExitCode != 0 {
+			return fmt.Errorf("network connect failed on %s: %s", hostName, strings.TrimSpace(connectResult.Stderr))
+		}
+	}
+
+	return nil
+}
+
+func (c *Client) inspectContainerEntry(ctx context.Context, hostName, containerID string) (podmanInspectEntry, error) {
+	conn, err := c.pool.GetConnection(hostName)
+	if err != nil {
+		return podmanInspectEntry{}, err
+	}
+
+	hostCfg, _ := c.pool.HostConfig(hostName)
+	safeID := sanitizeID(containerID)
+	if safeID == "" {
+		return podmanInspectEntry{}, fmt.Errorf("invalid container id")
+	}
+
+	cmd := fmt.Sprintf("%s inspect %s --format json", c.podmanCmd(hostCfg), safeID)
+	result, err := conn.Run(ctx, cmd)
+	if err != nil {
+		return podmanInspectEntry{}, fmt.Errorf("inspecting container %s on %s: %w", safeID, hostName, err)
+	}
+	if result.ExitCode != 0 {
+		return podmanInspectEntry{}, fmt.Errorf("podman inspect failed on %s: %s", hostName, strings.TrimSpace(result.Stderr))
+	}
+
+	var raw []podmanInspectEntry
+	if err := json.Unmarshal([]byte(result.Stdout), &raw); err != nil {
+		return podmanInspectEntry{}, fmt.Errorf("parsing inspect from %s: %w", hostName, err)
+	}
+	if len(raw) == 0 {
+		return podmanInspectEntry{}, fmt.Errorf("container %s not found on %s", safeID, hostName)
+	}
+
+	return raw[0], nil
+}
+
+func buildStandaloneRunCommand(podmanBin string, entry *podmanInspectEntry, imageRef string) (string, []string) {
+	args := []string{podmanBin, "run", "-d", "--name", shellQuote(strings.TrimPrefix(entry.Name, "/"))}
+
+	if entry.Config.Hostname != "" {
+		args = append(args, "--hostname", shellQuote(entry.Config.Hostname))
+	}
+
+	if rp := strings.TrimSpace(entry.HostConfig.RestartPolicy.Name); rp != "" {
+		args = append(args, "--restart", shellQuote(rp))
+	}
+
+	labels := sortedMapKeys(entry.Config.Labels)
+	for _, key := range labels {
+		args = append(args, "--label", shellQuote(fmt.Sprintf("%s=%s", key, entry.Config.Labels[key])))
+	}
+
+	envVars := append([]string(nil), entry.Config.Env...)
+	sort.Strings(envVars)
+	for _, env := range envVars {
+		if strings.TrimSpace(env) == "" {
+			continue
+		}
+		args = append(args, "--env", shellQuote(env))
+	}
+
+	mounts := append([]struct {
+		Type        string `json:"Type"`
+		Source      string `json:"Source"`
+		Destination string `json:"Destination"`
+		RW          bool   `json:"RW"`
+	}{}, entry.Mounts...)
+	sort.Slice(mounts, func(i, j int) bool {
+		return mounts[i].Destination < mounts[j].Destination
+	})
+	for _, mount := range mounts {
+		if mount.Source == "" || mount.Destination == "" {
+			continue
+		}
+		volume := fmt.Sprintf("%s:%s", mount.Source, mount.Destination)
+		if !mount.RW {
+			volume += ":ro"
+		}
+		args = append(args, "-v", shellQuote(volume))
+	}
+
+	ports := make([]string, 0, len(entry.NetworkSettings.Ports))
+	for portSpec, bindings := range entry.NetworkSettings.Ports {
+		for _, binding := range bindings {
+			if strings.TrimSpace(binding.HostPort) == "" {
+				continue
+			}
+			if binding.HostIP != "" {
+				ports = append(ports, fmt.Sprintf("%s:%s:%s", binding.HostIP, binding.HostPort, portSpec))
+			} else {
+				ports = append(ports, fmt.Sprintf("%s:%s", binding.HostPort, portSpec))
+			}
+		}
+	}
+	sort.Strings(ports)
+	for _, port := range ports {
+		args = append(args, "-p", shellQuote(port))
+	}
+
+	extraNetworks := []string{}
+	networkMode := strings.TrimSpace(entry.HostConfig.NetworkMode)
+	if networkMode != "" && networkMode != "default" {
+		args = append(args, "--network", shellQuote(networkMode))
+	} else {
+		networks := sortedMapKeys(entry.NetworkSettings.Networks)
+		if len(networks) > 0 {
+			args = append(args, "--network", shellQuote(networks[0]))
+			if len(networks) > 1 {
+				extraNetworks = append(extraNetworks, networks[1:]...)
+			}
+		}
+	}
+
+	if entrypoint := parseStringSliceOrScalar(entry.Config.Entrypoint); len(entrypoint) > 0 {
+		args = append(args, "--entrypoint", shellQuote(strings.Join(entrypoint, " ")))
+	}
+
+	args = append(args, shellQuote(imageRef))
+	for _, cmdArg := range entry.Config.Cmd {
+		args = append(args, shellQuote(cmdArg))
+	}
+
+	return strings.Join(args, " "), extraNetworks
+}
+
+func sortedMapKeys[V any](m map[string]V) []string {
+	if len(m) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func detectManagerFromLabels(labels map[string]string) string {
+	if len(labels) == 0 {
+		return "standalone"
+	}
+	if unit := strings.TrimSpace(labels["PODMAN_SYSTEMD_UNIT"]); unit != "" {
+		return "quadlet"
+	}
+	if _, ok := labels["com.docker.compose.project"]; ok {
+		return "compose"
+	}
+	return "standalone"
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
+}
+
+func normalizeDigest(raw string) string {
+	value := strings.TrimSpace(raw)
+	if value == "" || value == "<no value>" || value == "null" {
+		return ""
+	}
+	if idx := strings.LastIndex(value, "@"); idx >= 0 && idx < len(value)-1 {
+		value = value[idx+1:]
+	}
+	return value
+}
+
+func isRegistryImageReference(imageRef string) bool {
+	trimmed := strings.TrimSpace(strings.ToLower(imageRef))
+	if trimmed == "" {
+		return false
+	}
+	if strings.HasPrefix(trimmed, "sha256:") || strings.HasPrefix(trimmed, "containers-storage:") || strings.HasPrefix(trimmed, "localhost/") {
+		return false
+	}
+	return true
+}
+
+func parseStringSliceOrScalar(raw json.RawMessage) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+
+	var arr []string
+	if err := json.Unmarshal(raw, &arr); err == nil {
+		return arr
+	}
+
+	var single string
+	if err := json.Unmarshal(raw, &single); err == nil {
+		single = strings.TrimSpace(single)
+		if single == "" {
+			return nil
+		}
+		return []string{single}
+	}
+
+	return nil
+}
+
+func shellQuote(value string) string {
+	if value == "" {
+		return "''"
+	}
+	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
 }
 
 func (c *Client) systemctlCmd(host config.HostConfig, action, unit string) string {
@@ -1276,9 +1809,11 @@ type podmanInspectEntry struct {
 		} `json:"Networks"`
 	} `json:"NetworkSettings"`
 	Config struct {
-		Hostname string            `json:"Hostname"`
-		Env      []string          `json:"Env"`
-		Labels   map[string]string `json:"Labels"`
+		Hostname   string            `json:"Hostname"`
+		Env        []string          `json:"Env"`
+		Labels     map[string]string `json:"Labels"`
+		Entrypoint json.RawMessage   `json:"Entrypoint"`
+		Cmd        []string          `json:"Cmd"`
 	} `json:"Config"`
 	HostConfig struct {
 		RestartPolicy struct {

@@ -131,6 +131,24 @@ export interface ContainerStats {
   block_output_bytes?: number;
 }
 
+export interface UpdateCheckResult {
+  container_id: string;
+  container_name: string;
+  image: string;
+  local_digest?: string;
+  remote_digest?: string;
+  update_available: boolean;
+  error?: string;
+}
+
+export interface UpdateResult {
+  success: boolean;
+  message?: string;
+  error?: string;
+  old_image?: string;
+  new_image?: string;
+}
+
 export interface SessionState {
   enabled: boolean;
   authenticated: boolean;

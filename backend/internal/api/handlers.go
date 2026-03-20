@@ -112,6 +112,37 @@ func (s *Server) handleRestartContainer(w http.ResponseWriter, r *http.Request) 
 	s.handleContainerAction(w, r, s.clientSnapshot().RestartContainer)
 }
 
+func (s *Server) handleCheckContainerUpdate(w http.ResponseWriter, r *http.Request) {
+	hostName := r.PathValue("host")
+	containerID := r.PathValue("id")
+
+	result, err := s.clientSnapshot().CheckForUpdate(r.Context(), hostName, containerID)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (s *Server) handleUpdateContainer(w http.ResponseWriter, r *http.Request) {
+	hostName := r.PathValue("host")
+	containerID := r.PathValue("id")
+
+	result, err := s.clientSnapshot().UpdateContainer(r.Context(), hostName, containerID)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+
+	status := http.StatusOK
+	if !result.Success {
+		status = http.StatusBadGateway
+	}
+
+	writeJSON(w, status, result)
+}
+
 func (s *Server) handleRemoveContainer(w http.ResponseWriter, r *http.Request) {
 	hostName := r.PathValue("host")
 	containerID := r.PathValue("id")

@@ -116,6 +116,8 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("POST /api/hosts/{host}/containers/{id}/start", s.handleStartContainer)
 	s.mux.HandleFunc("POST /api/hosts/{host}/containers/{id}/stop", s.handleStopContainer)
 	s.mux.HandleFunc("POST /api/hosts/{host}/containers/{id}/restart", s.handleRestartContainer)
+	s.mux.HandleFunc("GET /api/hosts/{host}/containers/{id}/update-check", s.handleCheckContainerUpdate)
+	s.mux.HandleFunc("POST /api/hosts/{host}/containers/{id}/update", s.handleUpdateContainer)
 	s.mux.HandleFunc("GET /api/hosts/{host}/containers/{id}/logs", s.handleContainerLogs)
 	s.mux.HandleFunc("GET /api/hosts/{host}/containers/{id}/logs/stream", s.handleContainerLogsStream)
 	s.mux.HandleFunc("GET /api/containers", s.handleAllContainers)

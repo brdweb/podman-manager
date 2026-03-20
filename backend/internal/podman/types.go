@@ -95,6 +95,24 @@ type ActionResult struct {
 	Error   string `json:"error,omitempty"`
 }
 
+type UpdateCheckResult struct {
+	ContainerID     string `json:"container_id"`
+	ContainerName   string `json:"container_name"`
+	Image           string `json:"image"`
+	LocalDigest     string `json:"local_digest,omitempty"`
+	RemoteDigest    string `json:"remote_digest,omitempty"`
+	UpdateAvailable bool   `json:"update_available"`
+	Error           string `json:"error,omitempty"`
+}
+
+type UpdateResult struct {
+	Success  bool   `json:"success"`
+	Message  string `json:"message,omitempty"`
+	Error    string `json:"error,omitempty"`
+	OldImage string `json:"old_image,omitempty"`
+	NewImage string `json:"new_image,omitempty"`
+}
+
 type OverviewResponse struct {
 	Hosts []HostStatus `json:"hosts"`
 }
