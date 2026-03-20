@@ -16,12 +16,12 @@
 
 <CHANGES>
 ### 2026.03.20
-- fix: include Docker image build in release workflow
+- feat: add container update check and update functionality
 </CHANGES>
 
 <FILE Name="&pluginLOC;/&name;-&version;-x86_64-1.txz" Run="upgradepkg --install-new">
   <URL>https://github.com/&github;/releases/download/v&version;/&name;-&version;-x86_64-1.txz</URL>
-  <SHA256>0ca29c2f2e1abcceb12a8d98a3030bf2d6d022307cd6ac64e8f79cfb92ad8efd</SHA256>
+  <SHA256>5d32197ad4e73b6aacbf2ff14f4a78a5090b0759d762d5d1bf410e1f1ed33d1c</SHA256>
 </FILE>
 
 <FILE Run="/bin/bash">
