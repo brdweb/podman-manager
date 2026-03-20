@@ -1,4 +1,4 @@
-import { get, post } from './client';
+import { get, post, del } from './client';
 import type {
   ActionResult,
   Container,
@@ -57,5 +57,15 @@ export function getContainerLogs(
 ): Promise<LogsResponse> {
   return get<LogsResponse>(
     `/api/hosts/${encodeURIComponent(host)}/containers/${encodeURIComponent(id)}/logs?tail=${tail}`
+  );
+}
+
+export function removeContainer(
+  host: string,
+  id: string,
+  force: boolean = false
+): Promise<ActionResult> {
+  return del<ActionResult>(
+    `/api/hosts/${encodeURIComponent(host)}/containers/${encodeURIComponent(id)}?force=${force}`
   );
 }

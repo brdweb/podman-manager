@@ -40,6 +40,16 @@ type Container struct {
 	Stats       *ContainerStats   `json:"stats,omitempty"`
 }
 
+type Image struct {
+	ID         string    `json:"id"`
+	Repository string    `json:"repository"`
+	Tag        string    `json:"tag"`
+	Digest     string    `json:"digest,omitempty"`
+	Created    time.Time `json:"created"`
+	CreatedAgo string    `json:"created_ago,omitempty"`
+	Size       string    `json:"size,omitempty"`
+}
+
 type PortMapping struct {
 	HostIP        string `json:"host_ip"`
 	HostPort      uint16 `json:"host_port"`

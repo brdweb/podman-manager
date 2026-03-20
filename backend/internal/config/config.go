@@ -11,10 +11,12 @@ import (
 )
 
 type Config struct {
-	Server ServerConfig `yaml:"server"`
-	SSH    SSHConfig    `yaml:"ssh"`
-	Hosts  []HostConfig `yaml:"hosts"`
-	Auth   AuthConfig   `yaml:"auth,omitempty"`
+	Server             ServerConfig  `yaml:"server"`
+	SSH                SSHConfig     `yaml:"ssh"`
+	Hosts              []HostConfig  `yaml:"hosts"`
+	Auth               AuthConfig    `yaml:"auth,omitempty"`
+	EnableEventsStream bool          `yaml:"enable_events_stream"`
+	CacheTTL           time.Duration `yaml:"cache_ttl,omitempty"`
 }
 
 type ServerConfig struct {
@@ -23,9 +25,10 @@ type ServerConfig struct {
 }
 
 type SSHConfig struct {
-	KeyPath           string        `yaml:"key_path"`
-	ConnectTimeout    time.Duration `yaml:"connect_timeout"`
-	KeepaliveInterval time.Duration `yaml:"keepalive_interval"`
+	KeyPath               string        `yaml:"key_path"`
+	ConnectTimeout        time.Duration `yaml:"connect_timeout"`
+	KeepaliveInterval     time.Duration `yaml:"keepalive_interval"`
+	StrictHostKeyChecking string        `yaml:"ssh_strict_host_key_checking"`
 }
 
 type HostConfig struct {
@@ -102,12 +105,15 @@ func defaultConfig() *Config {
 			Bind: "127.0.0.1",
 		},
 		SSH: SSHConfig{
-			ConnectTimeout:    5 * time.Second,
-			KeepaliveInterval: 30 * time.Second,
+			ConnectTimeout:        5 * time.Second,
+			KeepaliveInterval:     30 * time.Second,
+			StrictHostKeyChecking: "accept-new",
 		},
 		Auth: AuthConfig{
 			SessionTTL: 12 * time.Hour,
 		},
+		EnableEventsStream: true,
+		CacheTTL:           3 * time.Second,
 	}
 }
 
@@ -149,6 +155,18 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("ssh.key_path is required")
 	}
 
+	hostKeyMode := strings.ToLower(strings.TrimSpace(c.SSH.StrictHostKeyChecking))
+	if hostKeyMode == "" {
+		hostKeyMode = "accept-new"
+	}
+
+	switch hostKeyMode {
+	case "strict", "accept-new", "off":
+		c.SSH.StrictHostKeyChecking = hostKeyMode
+	default:
+		return fmt.Errorf("ssh.ssh_strict_host_key_checking must be 'strict', 'accept-new', or 'off', got '%s'", c.SSH.StrictHostKeyChecking)
+	}
+
 	if c.Auth.SessionTTL <= 0 {
 		c.Auth.SessionTTL = 12 * time.Hour
 	}
@@ -160,6 +178,10 @@ func (c *Config) Validate() error {
 		if c.Auth.PasswordHash == "" {
 			return fmt.Errorf("auth.password_hash is required when auth is enabled")
 		}
+	}
+
+	if c.CacheTTL <= 0 {
+		c.CacheTTL = 3 * time.Second
 	}
 
 	return nil

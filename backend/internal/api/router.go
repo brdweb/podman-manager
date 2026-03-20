@@ -17,9 +17,18 @@ type Server struct {
 	config     *config.Config
 	client     *podman.Client
 	pool       *podman.SSHPool
+	events     *podman.EventStream
 	mux        *http.ServeMux
 	sessions   *sessionStore
 	logger     *slog.Logger
+
+	eventsMu      sync.RWMutex
+	eventClients  map[*eventClient]struct{}
+	eventsEnabled bool
+}
+
+type eventClient struct {
+	ch chan podman.PodmanEvent
 }
 
 func NewServer(configPath string, cfg *config.Config, logger *slog.Logger) (*Server, error) {
@@ -33,13 +42,27 @@ func NewServer(configPath string, cfg *config.Config, logger *slog.Logger) (*Ser
 	}
 
 	s := &Server{
-		configPath: config.ExpandPath(configPath),
-		config:     cfg,
-		client:     podman.NewClient(pool, logger),
-		pool:       pool,
-		sessions:   newSessionStore(),
-		logger:     logger,
+		configPath:   config.ExpandPath(configPath),
+		config:       cfg,
+		client:       podman.NewClient(pool, logger, cfg.CacheTTL),
+		pool:         pool,
+		sessions:     newSessionStore(),
+		logger:       logger,
+		eventClients: make(map[*eventClient]struct{}),
 	}
+
+	if cfg.EnableEventsStream {
+		eventStream := podman.NewEventStream(pool, logger)
+		for _, hostName := range pool.HostNames() {
+			if err := eventStream.Subscribe(hostName); err != nil {
+				logger.Warn("failed to subscribe to podman events stream", "host", hostName, "error", err)
+			}
+		}
+		s.events = eventStream
+		s.eventsEnabled = true
+		go s.runEventBroadcast(eventStream)
+	}
+
 	s.mux = http.NewServeMux()
 	s.registerRoutes()
 	return s, nil
@@ -53,10 +76,23 @@ func (s *Server) Close() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if s.events != nil {
+		s.events.Close()
+		s.events = nil
+	}
+	s.eventsEnabled = false
+
 	if s.pool != nil {
 		s.pool.Close()
 		s.pool = nil
 	}
+
+	s.eventsMu.Lock()
+	for client := range s.eventClients {
+		delete(s.eventClients, client)
+		close(client.ch)
+	}
+	s.eventsMu.Unlock()
 }
 
 func (s *Server) registerRoutes() {
@@ -68,13 +104,20 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("PUT /api/admin/config", s.handleUpdateConfig)
 	s.mux.HandleFunc("GET /api/hosts", s.handleListHosts)
 	s.mux.HandleFunc("GET /api/hosts/{host}/containers", s.handleListContainers)
+	s.mux.HandleFunc("GET /api/hosts/{host}/images", s.handleListImages)
+	s.mux.HandleFunc("POST /api/hosts/{host}/images/pull", s.handlePullImage)
+	s.mux.HandleFunc("DELETE /api/hosts/{host}/images/{id}", s.handleRemoveImage)
+	s.mux.HandleFunc("POST /api/hosts/{host}/images/prune", s.handlePruneImages)
 	s.mux.HandleFunc("GET /api/hosts/{host}/containers/{id}", s.handleInspectContainer)
+	s.mux.HandleFunc("DELETE /api/hosts/{host}/containers/{id}", s.handleRemoveContainer)
 	s.mux.HandleFunc("POST /api/hosts/{host}/containers/{id}/start", s.handleStartContainer)
 	s.mux.HandleFunc("POST /api/hosts/{host}/containers/{id}/stop", s.handleStopContainer)
 	s.mux.HandleFunc("POST /api/hosts/{host}/containers/{id}/restart", s.handleRestartContainer)
 	s.mux.HandleFunc("GET /api/hosts/{host}/containers/{id}/logs", s.handleContainerLogs)
+	s.mux.HandleFunc("GET /api/hosts/{host}/containers/{id}/logs/stream", s.handleContainerLogsStream)
 	s.mux.HandleFunc("GET /api/containers", s.handleAllContainers)
 	s.mux.HandleFunc("GET /api/overview", s.handleOverview)
+	s.mux.HandleFunc("GET /api/events", s.handleEvents)
 }
 
 func (s *Server) clientSnapshot() *podman.Client {
@@ -87,6 +130,42 @@ func (s *Server) poolSnapshot() *podman.SSHPool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.pool
+}
+
+func (s *Server) eventStreamSnapshot() (*podman.EventStream, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.events, s.eventsEnabled
+}
+
+func (s *Server) runEventBroadcast(stream *podman.EventStream) {
+	for evt := range stream.Events() {
+		s.eventsMu.RLock()
+		for client := range s.eventClients {
+			select {
+			case client.ch <- evt:
+			default:
+			}
+		}
+		s.eventsMu.RUnlock()
+	}
+}
+
+func (s *Server) registerEventClient() *eventClient {
+	client := &eventClient{ch: make(chan podman.PodmanEvent, 64)}
+	s.eventsMu.Lock()
+	s.eventClients[client] = struct{}{}
+	s.eventsMu.Unlock()
+	return client
+}
+
+func (s *Server) unregisterEventClient(client *eventClient) {
+	s.eventsMu.Lock()
+	if _, ok := s.eventClients[client]; ok {
+		delete(s.eventClients, client)
+		close(client.ch)
+	}
+	s.eventsMu.Unlock()
 }
 
 func (s *Server) authConfig() config.AuthConfig {
@@ -119,7 +198,7 @@ func writeError(w http.ResponseWriter, status int, message string) {
 func withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
 		if r.Method == "OPTIONS" {

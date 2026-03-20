@@ -5,6 +5,7 @@ import { Dashboard } from './pages/Dashboard';
 import { HostList } from './pages/HostList';
 import { HostDetail } from './pages/HostDetail';
 import { ContainersPage } from './pages/ContainersPage';
+import { ImagesPage } from './pages/ImagesPage';
 import { AdminPage } from './pages/AdminPage';
 import { LoginPage } from './pages/LoginPage';
 import { useSession } from './hooks/useAuth';
@@ -28,6 +29,7 @@ export default function App() {
             <Route element={<Layout />}>
               <Route path="/" element={<Dashboard />} />
               <Route path="/containers" element={<ContainersPage />} />
+              <Route path="/images" element={<ImagesPage />} />
               <Route path="/hosts" element={<HostList />} />
               <Route path="/hosts/:hostName" element={<HostDetail />} />
               <Route path="/admin" element={<AdminPage />} />

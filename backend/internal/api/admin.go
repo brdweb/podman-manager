@@ -107,25 +107,49 @@ func (s *Server) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var newEvents *podman.EventStream
+	if cfg.EnableEventsStream {
+		newEvents = podman.NewEventStream(newPool, s.logger)
+		for _, hostName := range newPool.HostNames() {
+			if err := newEvents.Subscribe(hostName); err != nil {
+				s.logger.Warn("failed to subscribe to podman events stream", "host", hostName, "error", err)
+			}
+		}
+	}
+
 	if err := writeConfigAtomically(s.configPath, data); err != nil {
 		s.logger.Error("failed to write config file", "path", s.configPath, "error", err)
+		if newEvents != nil {
+			newEvents.Close()
+		}
 		newPool.Close()
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	newClient := podman.NewClient(newPool, s.logger)
+	newClient := podman.NewClient(newPool, s.logger, cfg.CacheTTL)
 
 	s.mu.Lock()
 	oldPool := s.pool
+	oldEvents := s.events
 	s.pool = newPool
 	s.client = newClient
 	s.config = cfg
+	s.events = newEvents
+	s.eventsEnabled = cfg.EnableEventsStream
 	s.sessions = newSessionStore()
 	s.mu.Unlock()
 
 	if oldPool != nil {
 		oldPool.Close()
+	}
+
+	if oldEvents != nil {
+		oldEvents.Close()
+	}
+
+	if newEvents != nil {
+		go s.runEventBroadcast(newEvents)
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{

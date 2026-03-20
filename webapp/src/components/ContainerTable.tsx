@@ -3,6 +3,7 @@ import type { Container } from '../types/api';
 import { useContainerAction, useContainerDetail } from '../hooks/useContainers';
 import { StatusBadge } from './StatusBadge';
 import { formatBytes, formatPercent, formatTimestamp } from '../lib/format';
+import { LogViewer } from './LogViewer';
 
 interface ContainerTableProps {
   containers: Container[];
@@ -16,6 +17,7 @@ export function ContainerTable({
   emptyMessage = 'No containers found.',
 }: ContainerTableProps) {
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  const [viewingLogsFor, setViewingLogsFor] = useState<{host: string, id: string, name: string} | null>(null);
 
   if (containers.length === 0) {
     return <p className="text-zinc-500 text-center py-12">{emptyMessage}</p>;
@@ -46,11 +48,21 @@ export function ContainerTable({
                 showHost={showHost}
                 isExpanded={isExpanded}
                 onToggle={() => setExpandedKey(isExpanded ? null : key)}
+                onViewLogs={() => setViewingLogsFor({ host: container.host, id: container.id, name: container.name })}
               />
             );
           })}
         </tbody>
       </table>
+
+      {viewingLogsFor && (
+        <LogViewer
+          host={viewingLogsFor.host}
+          containerId={viewingLogsFor.id}
+          containerName={viewingLogsFor.name}
+          onClose={() => setViewingLogsFor(null)}
+        />
+      )}
     </div>
   );
 }
@@ -60,6 +72,7 @@ interface ContainerTableRowProps {
   showHost: boolean;
   isExpanded: boolean;
   onToggle: () => void;
+  onViewLogs: () => void;
 }
 
 function ContainerTableRow({
@@ -67,10 +80,23 @@ function ContainerTableRow({
   showHost,
   isExpanded,
   onToggle,
+  onViewLogs,
 }: ContainerTableRowProps) {
-  const { start, stop, restart } = useContainerAction();
+  const { start, stop, restart, remove } = useContainerAction();
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const isRunning = container.state === 'running';
   const colSpan = showHost ? 7 : 6;
+
+  const handleDelete = (force: boolean) => {
+    remove.mutate(
+      { host: container.host, id: container.id, force },
+      {
+        onSuccess: () => {
+          setIsDeleteDialogOpen(false);
+        },
+      }
+    );
+  };
 
   return (
     <>
@@ -112,9 +138,18 @@ function ContainerTableRow({
           </div>
         </td>
         <td className="px-4 py-3">
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-1.5 items-center">
              {isRunning ? (
                <>
+                 <ActionButton
+                   label="Logs"
+                   onClick={(e) => {
+                     e.stopPropagation();
+                     onViewLogs();
+                   }}
+                   disabled={false}
+                   variant="neutral"
+                 />
                  <ActionButton
                    label="Stop"
                    onClick={(e) => {
@@ -135,16 +170,43 @@ function ContainerTableRow({
                  />
                </>
              ) : (
-               <ActionButton
-                 label="Start"
-                 onClick={(e) => {
-                   e.stopPropagation();
-                   start.mutate({ host: container.host, id: container.id });
-                 }}
-                 disabled={start.isPending}
-                 variant="success"
-               />
+               <>
+                 <ActionButton
+                   label="Logs"
+                   onClick={(e) => {
+                     e.stopPropagation();
+                     onViewLogs();
+                   }}
+                   disabled={false}
+                   variant="neutral"
+                 />
+                 <ActionButton
+                   label="Start"
+                   onClick={(e) => {
+                     e.stopPropagation();
+                     start.mutate({ host: container.host, id: container.id });
+                   }}
+                   disabled={start.isPending}
+                   variant="success"
+                 />
+               </>
              )}
+             <button
+               type="button"
+               onClick={(e) => {
+                 e.stopPropagation();
+                 setIsDeleteDialogOpen(true);
+               }}
+               className="ml-1 rounded p-1 text-zinc-500 hover:bg-zinc-800 hover:text-red-400 transition-colors"
+               title="Delete container"
+             >
+               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                 <title>Delete container</title>
+                 <path d="M3 6h18"></path>
+                 <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                 <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+               </svg>
+             </button>
           </div>
         </td>
       </tr>
@@ -156,6 +218,14 @@ function ContainerTableRow({
           colSpan={colSpan}
         />
       )}
+
+      <DeleteDialog
+        isOpen={isDeleteDialogOpen}
+        onClose={() => setIsDeleteDialogOpen(false)}
+        onConfirm={handleDelete}
+        containerName={container.name}
+        isPending={remove.isPending}
+      />
     </>
   );
 }
@@ -318,5 +388,64 @@ function ActionButton({ label, onClick, disabled, variant }: ActionButtonProps) 
     >
       {label}
     </button>
+  );
+}
+
+function DeleteDialog({
+  isOpen,
+  onClose,
+  onConfirm,
+  containerName,
+  isPending,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onConfirm: (force: boolean) => void;
+  containerName: string;
+  isPending: boolean;
+}) {
+  const [force, setForce] = useState(false);
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-950 p-6 shadow-2xl">
+        <h3 className="text-lg font-medium text-zinc-100">Delete Container</h3>
+        <p className="mt-2 text-sm text-zinc-400">
+          Are you sure you want to delete <span className="font-mono text-zinc-300">{containerName}</span>?
+          This action cannot be undone.
+        </p>
+        
+        <label className="mt-4 flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={force}
+            onChange={(e) => setForce(e.target.checked)}
+            className="rounded border-zinc-700 bg-zinc-900 text-red-600 focus:ring-red-600 focus:ring-offset-zinc-950"
+          />
+          Force delete (running container)
+        </label>
+
+        <div className="mt-6 flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isPending}
+            className="rounded-lg px-4 py-2 text-sm font-medium text-zinc-300 hover:bg-zinc-900 hover:text-white transition-colors disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => onConfirm(force)}
+            disabled={isPending}
+            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-500 transition-colors disabled:opacity-50 flex items-center gap-2"
+          >
+            {isPending ? 'Deleting...' : 'Delete'}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

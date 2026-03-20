@@ -3,15 +3,18 @@ package podman
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/knownhosts"
 
 	"github.com/brdweb/podman-manager/internal/config"
 )
@@ -55,9 +58,15 @@ func NewSSHPool(cfg *config.Config, logger *slog.Logger) (*SSHPool, error) {
 		return nil, fmt.Errorf("parsing SSH key: %w", err)
 	}
 
+	hostKeyCallback, err := buildHostKeyCallback(cfg, logger)
+	if err != nil {
+		logger.Error("failed to initialize SSH host key verification", "error", err)
+		return nil, err
+	}
+
 	sshCfg := &ssh.ClientConfig{
 		Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		HostKeyCallback: hostKeyCallback,
 		Timeout:         cfg.SSH.ConnectTimeout,
 	}
 
@@ -75,6 +84,123 @@ func NewSSHPool(cfg *config.Config, logger *slog.Logger) (*SSHPool, error) {
 	}
 
 	return pool, nil
+}
+
+func buildHostKeyCallback(cfg *config.Config, logger *slog.Logger) (ssh.HostKeyCallback, error) {
+	hostKeyMode := cfg.SSH.StrictHostKeyChecking
+	knownHostsPath := config.ExpandPath("~/.ssh/known_hosts")
+
+	switch hostKeyMode {
+	case "off":
+		logger.Warn("SSH host key verification is disabled", "mode", hostKeyMode)
+		return ssh.InsecureIgnoreHostKey(), nil
+	case "strict":
+		if err := ensureKnownHostsFile(knownHostsPath); err != nil {
+			return nil, err
+		}
+		callback, err := knownhosts.New(knownHostsPath)
+		if err != nil {
+			return nil, fmt.Errorf("loading known_hosts file %s: %w", knownHostsPath, err)
+		}
+		return callback, nil
+	case "accept-new":
+		return newAcceptNewHostKeyCallback(knownHostsPath, logger)
+	default:
+		return nil, fmt.Errorf("unsupported ssh strict host key checking mode: %s", hostKeyMode)
+	}
+}
+
+func newAcceptNewHostKeyCallback(knownHostsPath string, logger *slog.Logger) (ssh.HostKeyCallback, error) {
+	if err := ensureKnownHostsFile(knownHostsPath); err != nil {
+		return nil, err
+	}
+
+	baseCallback, err := knownhosts.New(knownHostsPath)
+	if err != nil {
+		return nil, fmt.Errorf("loading known_hosts file %s: %w", knownHostsPath, err)
+	}
+
+	var mu sync.Mutex
+
+	return func(hostname string, remote net.Addr, key ssh.PublicKey) error {
+		if err := baseCallback(hostname, remote, key); err == nil {
+			return nil
+		} else {
+			var keyErr *knownhosts.KeyError
+			if !errors.As(err, &keyErr) {
+				return err
+			}
+
+			if len(keyErr.Want) > 0 {
+				return err
+			}
+		}
+
+		normalizedHost := knownhosts.Normalize(hostname)
+
+		mu.Lock()
+		defer mu.Unlock()
+
+		refreshedCallback, err := knownhosts.New(knownHostsPath)
+		if err != nil {
+			return fmt.Errorf("reloading known_hosts file %s: %w", knownHostsPath, err)
+		}
+		if err := refreshedCallback(hostname, remote, key); err == nil {
+			baseCallback = refreshedCallback
+			return nil
+		}
+
+		entry := knownhosts.Line([]string{normalizedHost}, key)
+		if err := appendKnownHostEntry(knownHostsPath, entry); err != nil {
+			return err
+		}
+
+		updatedCallback, err := knownhosts.New(knownHostsPath)
+		if err != nil {
+			return fmt.Errorf("reloading known_hosts file %s after update: %w", knownHostsPath, err)
+		}
+		baseCallback = updatedCallback
+
+		logger.Warn(
+			"accepted new SSH host key and added to known_hosts",
+			"host",
+			normalizedHost,
+			"known_hosts",
+			knownHostsPath,
+			"fingerprint",
+			ssh.FingerprintSHA256(key),
+		)
+
+		return nil
+	}, nil
+}
+
+func ensureKnownHostsFile(knownHostsPath string) error {
+	dir := filepath.Dir(knownHostsPath)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return fmt.Errorf("creating known_hosts directory %s: %w", dir, err)
+	}
+
+	file, err := os.OpenFile(knownHostsPath, os.O_RDONLY|os.O_CREATE, 0o600)
+	if err != nil {
+		return fmt.Errorf("ensuring known_hosts file %s: %w", knownHostsPath, err)
+	}
+
+	return file.Close()
+}
+
+func appendKnownHostEntry(knownHostsPath, entry string) error {
+	file, err := os.OpenFile(knownHostsPath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o600)
+	if err != nil {
+		return fmt.Errorf("opening known_hosts file %s for update: %w", knownHostsPath, err)
+	}
+	defer file.Close()
+
+	if _, err := file.WriteString(entry + "\n"); err != nil {
+		return fmt.Errorf("writing known_hosts entry to %s: %w", knownHostsPath, err)
+	}
+
+	return nil
 }
 
 func (p *SSHPool) GetConnection(hostName string) (*sshConn, error) {

@@ -24,6 +24,8 @@ auth:
   password_hash: ""
   session_ttl: "12h"
 
+enable_events_stream: true
+
 # Podman hosts to manage
 hosts:
   - name: "host-alpha"

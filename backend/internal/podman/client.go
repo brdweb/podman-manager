@@ -7,9 +7,12 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/crypto/ssh"
 
 	"github.com/brdweb/podman-manager/internal/config"
 )
@@ -17,13 +20,14 @@ import (
 type Client struct {
 	pool   *SSHPool
 	logger *slog.Logger
+	cache  *Cache
 }
 
-func NewClient(pool *SSHPool, logger *slog.Logger) *Client {
+func NewClient(pool *SSHPool, logger *slog.Logger, cacheTTL time.Duration) *Client {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Client{pool: pool, logger: logger}
+	return &Client{pool: pool, logger: logger, cache: NewCache(cacheTTL)}
 }
 
 func (c *Client) podmanCmd(host config.HostConfig) string {
@@ -34,6 +38,14 @@ func (c *Client) podmanCmd(host config.HostConfig) string {
 }
 
 func (c *Client) ListContainers(ctx context.Context, hostName string) ([]Container, error) {
+	if c.cache == nil {
+		return c.fetchContainers(ctx, hostName)
+	}
+
+	return c.cache.GetContainers(ctx, hostName, c.fetchContainers)
+}
+
+func (c *Client) fetchContainers(ctx context.Context, hostName string) ([]Container, error) {
 	conn, err := c.pool.GetConnection(hostName)
 	if err != nil {
 		return nil, err
@@ -87,6 +99,14 @@ func (c *Client) ListContainers(ctx context.Context, hostName string) ([]Contain
 }
 
 func (c *Client) ListContainerStats(ctx context.Context, hostName string) (map[string]*ContainerStats, error) {
+	if c.cache == nil {
+		return c.fetchContainerStats(ctx, hostName)
+	}
+
+	return c.cache.GetStats(ctx, hostName, c.fetchContainerStats)
+}
+
+func (c *Client) fetchContainerStats(ctx context.Context, hostName string) (map[string]*ContainerStats, error) {
 	conn, err := c.pool.GetConnection(hostName)
 	if err != nil {
 		return nil, err
@@ -139,6 +159,14 @@ func (c *Client) ListContainerStats(ctx context.Context, hostName string) (map[s
 }
 
 func (c *Client) HostSystemInfo(ctx context.Context, hostName string) (*HostSystemInfo, error) {
+	if c.cache == nil {
+		return c.fetchHostSystemInfo(ctx, hostName)
+	}
+
+	return c.cache.GetSystemInfo(ctx, hostName, c.fetchHostSystemInfo)
+}
+
+func (c *Client) fetchHostSystemInfo(ctx context.Context, hostName string) (*HostSystemInfo, error) {
 	conn, err := c.pool.GetConnection(hostName)
 	if err != nil {
 		return nil, err
@@ -358,6 +386,56 @@ func (c *Client) RestartContainer(ctx context.Context, hostName, containerID str
 	return c.containerAction(ctx, hostName, containerID, "restart")
 }
 
+func (c *Client) RemoveContainer(ctx context.Context, hostName, containerID string, force bool) (*ActionResult, error) {
+	conn, err := c.pool.GetConnection(hostName)
+	if err != nil {
+		return &ActionResult{Success: false, Error: err.Error()}, nil
+	}
+
+	hostCfg, _ := c.pool.HostConfig(hostName)
+	safeID := sanitizeID(containerID)
+
+	cmd := fmt.Sprintf("%s rm %s", c.podmanCmd(hostCfg), safeID)
+	if force {
+		cmd = fmt.Sprintf("%s rm -f %s", c.podmanCmd(hostCfg), safeID)
+	}
+
+	result, err := conn.Run(ctx, cmd)
+	if err != nil {
+		c.logger.Error("container removal command execution failed", "host", hostName, "container", safeID, "command", cmd, "error", err)
+		return &ActionResult{Success: false, Error: err.Error()}, nil
+	}
+
+	if result.ExitCode != 0 {
+		stderr := strings.TrimSpace(result.Stderr)
+		if stderr == "" {
+			stderr = "failed to remove container"
+		}
+
+		c.logger.Error("container removal command returned non-zero exit", "host", hostName, "container", safeID, "command", cmd, "exit_code", result.ExitCode, "stderr", stderr)
+
+		lower := strings.ToLower(stderr)
+		switch {
+		case strings.Contains(lower, "no such container"), strings.Contains(lower, "not found"):
+			return &ActionResult{Success: false, Error: fmt.Sprintf("container %s not found on %s", safeID, hostName)}, nil
+		case strings.Contains(lower, "running") && !force:
+			return &ActionResult{Success: false, Error: fmt.Sprintf("container %s is running on %s; stop it first or use force=true", safeID, hostName)}, nil
+		default:
+			return &ActionResult{Success: false, Error: stderr}, nil
+		}
+	}
+
+	if c.cache != nil {
+		c.cache.Invalidate(hostName)
+	}
+
+	msg := fmt.Sprintf("Container %s removed successfully", safeID)
+	if force {
+		msg = fmt.Sprintf("Container %s force removed successfully", safeID)
+	}
+	return &ActionResult{Success: true, Message: msg}, nil
+}
+
 func (c *Client) containerAction(ctx context.Context, hostName, containerID, action string) (*ActionResult, error) {
 	conn, err := c.pool.GetConnection(hostName)
 	if err != nil {
@@ -392,6 +470,10 @@ func (c *Client) containerAction(ctx context.Context, hostName, containerID, act
 			Success: false,
 			Error:   strings.TrimSpace(result.Stderr),
 		}, nil
+	}
+
+	if c.cache != nil {
+		c.cache.Invalidate(hostName)
 	}
 
 	return &ActionResult{
@@ -451,6 +533,239 @@ func (c *Client) ContainerLogs(ctx context.Context, hostName, containerID string
 		output = result.Stderr
 	}
 	return output, nil
+}
+
+func (c *Client) StreamLogs(ctx context.Context, hostName, containerID string, tail int, output chan<- string) error {
+	safeID := sanitizeID(containerID)
+	if safeID == "" {
+		return fmt.Errorf("invalid container id")
+	}
+	if tail <= 0 {
+		tail = 100
+	}
+
+	tailForAttempt := tail
+	backoff := time.Second
+	maxBackoff := 10 * time.Second
+
+	for {
+		if ctx.Err() != nil {
+			return nil
+		}
+
+		err := c.streamLogsSession(ctx, hostName, safeID, tailForAttempt, output)
+		if ctx.Err() != nil {
+			return nil
+		}
+
+		if strings.Contains(strings.ToLower(err.Error()), "unknown host") {
+			return err
+		}
+
+		c.logger.Warn("container logs stream disconnected, retrying", "host", hostName, "container", safeID, "error", err, "retry_in", backoff.String())
+
+		timer := time.NewTimer(backoff)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil
+		case <-timer.C:
+		}
+
+		tailForAttempt = 0
+		if backoff < maxBackoff {
+			backoff *= 2
+			if backoff > maxBackoff {
+				backoff = maxBackoff
+			}
+		}
+	}
+}
+
+func (c *Client) streamLogsSession(ctx context.Context, hostName, containerID string, tail int, output chan<- string) error {
+	conn, err := c.pool.GetConnection(hostName)
+	if err != nil {
+		return err
+	}
+
+	hostCfg, _ := c.pool.HostConfig(hostName)
+	cmd := fmt.Sprintf("%s logs -f --tail %d %s", c.podmanCmd(hostCfg), tail, containerID)
+	session, stdout, stderr, err := openStreamingSession(conn, cmd)
+	if err != nil {
+		return fmt.Errorf("starting logs stream for %s on %s: %w", containerID, hostName, err)
+	}
+	defer session.Close()
+
+	go func() {
+		<-ctx.Done()
+		_ = session.Signal(ssh.SIGTERM)
+		_ = session.Close()
+	}()
+
+	scanner := bufio.NewScanner(stdout)
+	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		select {
+		case output <- line:
+		case <-ctx.Done():
+			return nil
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("reading logs stream on %s: %w", hostName, err)
+	}
+
+	waitErr := session.Wait()
+	if ctx.Err() != nil {
+		return nil
+	}
+
+	if waitErr != nil {
+		if exitErr, ok := waitErr.(*ssh.ExitError); ok {
+			errText := strings.TrimSpace(stderr.String())
+			if errText == "" {
+				errText = strings.TrimSpace(exitErr.Error())
+			}
+			return fmt.Errorf("logs stream process ended: %s", errText)
+		}
+		return fmt.Errorf("waiting for logs stream on %s: %w", hostName, waitErr)
+	}
+
+	if stderr.Len() > 0 {
+		return fmt.Errorf("logs stream ended: %s", strings.TrimSpace(stderr.String()))
+	}
+
+	return fmt.Errorf("logs stream ended unexpectedly")
+}
+
+func (c *Client) ListImages(ctx context.Context, hostName string) ([]Image, error) {
+	conn, err := c.pool.GetConnection(hostName)
+	if err != nil {
+		return nil, err
+	}
+
+	hostCfg, _ := c.pool.HostConfig(hostName)
+	cmd := fmt.Sprintf("%s images --format json", c.podmanCmd(hostCfg))
+
+	result, err := conn.Run(ctx, cmd)
+	if err != nil {
+		c.logger.Error("podman command execution failed", "host", hostName, "command", cmd, "error", err)
+		return nil, fmt.Errorf("listing images on %s: %w", hostName, err)
+	}
+	if result.ExitCode != 0 {
+		c.logger.Error("podman command returned non-zero exit", "host", hostName, "command", cmd, "exit_code", result.ExitCode, "stderr", strings.TrimSpace(result.Stderr))
+		return nil, fmt.Errorf("podman images failed on %s: %s", hostName, strings.TrimSpace(result.Stderr))
+	}
+
+	stdout := strings.TrimSpace(result.Stdout)
+	if stdout == "" || stdout == "[]" {
+		return []Image{}, nil
+	}
+
+	var raw []podmanImageEntry
+	if err := json.Unmarshal([]byte(stdout), &raw); err != nil {
+		return nil, fmt.Errorf("parsing image list from %s: %w", hostName, err)
+	}
+
+	images := make([]Image, 0, len(raw))
+	for _, entry := range raw {
+		images = append(images, entry.toImage())
+	}
+
+	return images, nil
+}
+
+func (c *Client) PullImage(ctx context.Context, hostName, imageRef string) error {
+	conn, err := c.pool.GetConnection(hostName)
+	if err != nil {
+		return err
+	}
+
+	hostCfg, _ := c.pool.HostConfig(hostName)
+	safeRef := sanitizeImageRef(imageRef)
+	if safeRef == "" {
+		return fmt.Errorf("invalid image reference")
+	}
+
+	cmd := fmt.Sprintf("%s pull %s", c.podmanCmd(hostCfg), safeRef)
+	result, err := conn.Run(ctx, cmd)
+	if err != nil {
+		c.logger.Error("podman command execution failed", "host", hostName, "command", cmd, "error", err)
+		return fmt.Errorf("pulling image %s on %s: %w", safeRef, hostName, err)
+	}
+	if result.ExitCode != 0 {
+		c.logger.Error("podman command returned non-zero exit", "host", hostName, "command", cmd, "exit_code", result.ExitCode, "stderr", strings.TrimSpace(result.Stderr))
+		return fmt.Errorf("podman pull failed on %s: %s", hostName, strings.TrimSpace(result.Stderr))
+	}
+
+	if c.cache != nil {
+		c.cache.Invalidate(hostName)
+	}
+
+	return nil
+}
+
+func (c *Client) RemoveImage(ctx context.Context, hostName, imageID string, force bool) error {
+	conn, err := c.pool.GetConnection(hostName)
+	if err != nil {
+		return err
+	}
+
+	hostCfg, _ := c.pool.HostConfig(hostName)
+	safeID := sanitizeID(imageID)
+	if safeID == "" {
+		return fmt.Errorf("invalid image id")
+	}
+
+	cmd := fmt.Sprintf("%s rmi %s", c.podmanCmd(hostCfg), safeID)
+	if force {
+		cmd = fmt.Sprintf("%s rmi --force %s", c.podmanCmd(hostCfg), safeID)
+	}
+
+	result, err := conn.Run(ctx, cmd)
+	if err != nil {
+		c.logger.Error("podman command execution failed", "host", hostName, "command", cmd, "error", err)
+		return fmt.Errorf("removing image %s on %s: %w", safeID, hostName, err)
+	}
+	if result.ExitCode != 0 {
+		c.logger.Error("podman command returned non-zero exit", "host", hostName, "command", cmd, "exit_code", result.ExitCode, "stderr", strings.TrimSpace(result.Stderr))
+		return fmt.Errorf("podman rmi failed on %s: %s", hostName, strings.TrimSpace(result.Stderr))
+	}
+
+	if c.cache != nil {
+		c.cache.Invalidate(hostName)
+	}
+
+	return nil
+}
+
+func (c *Client) PruneImages(ctx context.Context, hostName string) (int, error) {
+	conn, err := c.pool.GetConnection(hostName)
+	if err != nil {
+		return 0, err
+	}
+
+	hostCfg, _ := c.pool.HostConfig(hostName)
+	cmd := fmt.Sprintf("%s image prune -f", c.podmanCmd(hostCfg))
+
+	result, err := conn.Run(ctx, cmd)
+	if err != nil {
+		c.logger.Error("podman command execution failed", "host", hostName, "command", cmd, "error", err)
+		return 0, fmt.Errorf("pruning images on %s: %w", hostName, err)
+	}
+	if result.ExitCode != 0 {
+		c.logger.Error("podman command returned non-zero exit", "host", hostName, "command", cmd, "exit_code", result.ExitCode, "stderr", strings.TrimSpace(result.Stderr))
+		return 0, fmt.Errorf("podman image prune failed on %s: %s", hostName, strings.TrimSpace(result.Stderr))
+	}
+
+	if c.cache != nil {
+		c.cache.Invalidate(hostName)
+	}
+
+	return parsePrunedImageCount(result.Stdout), nil
 }
 
 func (c *Client) Overview(ctx context.Context) *OverviewResponse {
@@ -693,6 +1008,32 @@ func sanitizeID(id string) string {
 	return b.String()
 }
 
+func sanitizeImageRef(ref string) string {
+	var b strings.Builder
+	for _, r := range ref {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' || r == '.' || r == '/' || r == ':' || r == '@' {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+var pruneDeletedLinePattern = regexp.MustCompile(`^(sha256:[a-f0-9]{12,}|deleted:\s+.+|untagged:\s+.+)$`)
+
+func parsePrunedImageCount(output string) int {
+	count := 0
+	for _, line := range strings.Split(output, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.EqualFold(trimmed, "Deleted Images") || strings.HasPrefix(trimmed, "Total reclaimed space:") {
+			continue
+		}
+		if pruneDeletedLinePattern.MatchString(strings.ToLower(trimmed)) {
+			count++
+		}
+	}
+	return count
+}
+
 // --- Raw Podman JSON types for parsing CLI output ---
 
 type podmanPSEntry struct {
@@ -706,6 +1047,34 @@ type podmanPSEntry struct {
 	Mounts   json.RawMessage   `json:"Mounts"`
 	Labels   map[string]string `json:"Labels"`
 	Networks json.RawMessage   `json:"Networks"`
+}
+
+type podmanImageEntry struct {
+	ID           string      `json:"Id"`
+	Repository   string      `json:"Repository"`
+	Tag          string      `json:"Tag"`
+	Digest       string      `json:"Digest"`
+	CreatedAt    string      `json:"CreatedAt"`
+	CreatedSince string      `json:"CreatedSince"`
+	Created      interface{} `json:"Created"`
+	Size         string      `json:"Size"`
+}
+
+func (p *podmanImageEntry) toImage() Image {
+	created := parsePodmanTime(p.Created)
+	if created.IsZero() {
+		created = parsePodmanTime(p.CreatedAt)
+	}
+
+	return Image{
+		ID:         p.ID,
+		Repository: p.Repository,
+		Tag:        p.Tag,
+		Digest:     p.Digest,
+		Created:    created,
+		CreatedAgo: p.CreatedSince,
+		Size:       p.Size,
+	}
 }
 
 type podmanPort struct {
@@ -775,6 +1144,38 @@ func parseCreatedTime(raw interface{}) time.Time {
 	case float64:
 		return time.Unix(int64(v), 0)
 	}
+	return time.Time{}
+}
+
+func parsePodmanTime(raw interface{}) time.Time {
+	if t := parseCreatedTime(raw); !t.IsZero() {
+		return t
+	}
+
+	v, ok := raw.(string)
+	if !ok {
+		return time.Time{}
+	}
+
+	value := strings.TrimSpace(v)
+	if value == "" {
+		return time.Time{}
+	}
+
+	layouts := []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02 15:04:05 -0700 MST",
+		time.UnixDate,
+		time.RubyDate,
+	}
+
+	for _, layout := range layouts {
+		if parsed, err := time.Parse(layout, value); err == nil {
+			return parsed
+		}
+	}
+
 	return time.Time{}
 }
 

@@ -4,6 +4,7 @@ import { useLogout, useSession } from '../hooks/useAuth';
 const navItems = [
   { to: '/', label: 'Dashboard' },
   { to: '/containers', label: 'Containers' },
+  { to: '/images', label: 'Images' },
   { to: '/hosts', label: 'Hosts' },
   { to: '/admin', label: 'Admin' },
 ];

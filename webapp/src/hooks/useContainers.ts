@@ -7,6 +7,7 @@ import {
   startContainer,
   stopContainer,
   restartContainer,
+  removeContainer,
 } from '../api/containers';
 
 export function useContainers(host: string) {
@@ -76,5 +77,15 @@ export function useContainerAction() {
     },
   });
 
-  return { start, stop, restart };
+  const remove = useMutation({
+    mutationFn: ({ host, id, force }: { host: string; id: string; force?: boolean }) =>
+      removeContainer(host, id, force),
+    onSuccess: (_data, { host }) => {
+      void qc.invalidateQueries({ queryKey: ['containers', host] });
+      void qc.invalidateQueries({ queryKey: ['containers', 'all'] });
+      void qc.invalidateQueries({ queryKey: ['overview'] });
+    },
+  });
+
+  return { start, stop, restart, remove };
 }

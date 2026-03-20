@@ -33,6 +33,17 @@ export interface Container {
   stats?: ContainerStats;
 }
 
+export interface Image {
+  id: string;
+  repository: string;
+  tag: string;
+  digest?: string;
+  created: string;
+  created_ago?: string;
+  size?: string;
+  host?: string;
+}
+
 export interface PortMapping {
   host_ip: string;
   host_port: number;
