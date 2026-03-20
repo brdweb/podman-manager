@@ -1,6 +1,9 @@
 name: Release Podman Manager
 
 on:
+  push:
+    tags:
+      - 'v20*'
   workflow_dispatch:
     inputs:
       version:
@@ -11,6 +14,9 @@ on:
 permissions:
   contents: write
   packages: write
+
+env:
+  VERSION: ${{ github.event.inputs.version || github.ref_name }}
 
 jobs:
   build-and-release:
@@ -28,7 +34,7 @@ jobs:
       - name: Build backend binary
         run: |
           cd backend
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X main.version=${{ inputs.version }}" -o bin/podman-manager-linux-amd64 ./cmd/podman-manager
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X main.version=${{ env.VERSION }}" -o bin/podman-manager-linux-amd64 ./cmd/podman-manager
 
       - name: Package Unraid plugin
         run: |
@@ -38,13 +44,13 @@ jobs:
           chmod 755 src/usr/local/bin/podman-manager
           
           mkdir -p dist
-          tar -C src -cJf dist/podman-manager-${{ inputs.version }}-x86_64-1.txz .
+          tar -C src -cJf dist/podman-manager-${{ env.VERSION }}-x86_64-1.txz .
 
       - name: Generate .plg file
         run: |
           cd unraid-plugin
-          VERSION="${{ inputs.version }}" GITHUB_REPO="brdweb/podman-manager" \
-            TXZ_PATH="dist/podman-manager-${{ inputs.version }}-x86_64-1.txz" \
+          VERSION="${{ env.VERSION }}" GITHUB_REPO="brdweb/podman-manager" \
+            TXZ_PATH="dist/podman-manager-${{ env.VERSION }}-x86_64-1.txz" \
             OUTPUT_PATH="podman-manager.plg" \
             ./scripts/generate-plg.sh
 
@@ -52,7 +58,7 @@ jobs:
         run: |
           cd unraid-plugin
           CHANGES=$(git log --oneline -10 --pretty=format:"- %s" | head -10)
-          sed -i "/<CHANGES>/,/<\/CHANGES>/c<CHANGES>\n### ${{ inputs.version }}\n${CHANGES}\n</CHANGES>" podman-manager.plg || true
+          sed -i "/<CHANGES>/,/<\/CHANGES>/c<CHANGES>\n### ${{ env.VERSION }}\n${CHANGES}\n</CHANGES>" podman-manager.plg || true
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v4
@@ -72,18 +78,18 @@ jobs:
           platforms: linux/amd64
           push: true
           build-args: |
-            VERSION=${{ inputs.version }}
+            VERSION=${{ env.VERSION }}
           tags: |
             ghcr.io/brdweb/podman-manager:latest
-            ghcr.io/brdweb/podman-manager:v${{ inputs.version }}
+            ghcr.io/brdweb/podman-manager:${{ env.VERSION }}
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ inputs.version }}
-          name: v${{ inputs.version }}
+          tag_name: ${{ env.VERSION }}
+          name: ${{ env.VERSION }}
           body: |
-            ## Podman Manager ${{ inputs.version }}
+            ## Podman Manager ${{ env.VERSION }}
             
             ### Changes
             - Snapshot cache with configurable TTL (reduces SSH polling)
@@ -97,9 +103,9 @@ jobs:
             
             ### Downloads
             - **Unraid Plugin**: Download the .txz file and install manually, or use the .plg URL from Community Applications
-            - **Docker Image**: `ghcr.io/brdweb/podman-manager:v${{ inputs.version }}` or `ghcr.io/brdweb/podman-manager:latest`
+            - **Docker Image**: `ghcr.io/brdweb/podman-manager:${{ env.VERSION }}` or `ghcr.io/brdweb/podman-manager:latest`
           files: |
-            unraid-plugin/dist/podman-manager-${{ inputs.version }}-x86_64-1.txz
+            unraid-plugin/dist/podman-manager-${{ env.VERSION }}-x86_64-1.txz
             unraid-plugin/podman-manager.plg
           draft: false
           prerelease: false
@@ -109,5 +115,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add unraid-plugin/podman-manager.plg
-          git commit -m "chore: update .plg for v${{ inputs.version }}" || echo "No changes to commit"
+          git commit -m "chore: update .plg for ${{ env.VERSION }}" || echo "No changes to commit"
           git push origin main || echo "Nothing to push"
