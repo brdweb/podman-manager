@@ -2,7 +2,7 @@
 <!DOCTYPE PLUGIN [
   <!ENTITY name        "podman-manager">
   <!ENTITY author      "brdweb">
-  <!ENTITY version     "2026.03.20">
+  <!ENTITY version     "2026.03.20.1">
   <!ENTITY launch      "Tasks/PodmanManager">
   <!ENTITY github      "brdweb/podman-manager">
   <!ENTITY pluginURL   "https://raw.githubusercontent.com/&github;/main/unraid-plugin/podman-manager.plg">
@@ -15,7 +15,7 @@
         icon="fa-cube" min="7.0.0">
 
 <CHANGES>
-### 2026.03.20
+### 2026.03.20.1
 - Add container update check and update functionality
 - Show orange "Update Available" badge on container rows
 - Add Update action button with confirmation dialog
@@ -35,7 +35,7 @@
 
 <FILE Name="&pluginLOC;/&name;-&version;-x86_64-1.txz" Run="upgradepkg --install-new">
   <URL>https://github.com/&github;/releases/download/v&version;/&name;-&version;-x86_64-1.txz</URL>
-  <SHA256>460378e8b9b6079154f2f1c1771b99b4796e31656f79f7a37cf67aa094d0d0ba</SHA256>
+  <SHA256>56843be45f3f68f2cda59eb4f279cb65ee9f5a9dbfece099906ed2883605d102</SHA256>
 </FILE>
 
 <FILE Run="/bin/bash">
