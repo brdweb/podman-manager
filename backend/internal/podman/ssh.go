@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -19,12 +21,14 @@ type SSHPool struct {
 	connections map[string]*sshConn
 	sshConfig   *ssh.ClientConfig
 	hostConfigs map[string]config.HostConfig
+	logger      *slog.Logger
 }
 
 type sshConn struct {
 	mu     sync.Mutex
 	client *ssh.Client
 	host   config.HostConfig
+	logger *slog.Logger
 }
 
 type CommandResult struct {
@@ -34,14 +38,20 @@ type CommandResult struct {
 	Duration time.Duration
 }
 
-func NewSSHPool(cfg *config.Config) (*SSHPool, error) {
+func NewSSHPool(cfg *config.Config, logger *slog.Logger) (*SSHPool, error) {
+	if logger == nil {
+		logger = slog.Default()
+	}
+
 	keyData, err := os.ReadFile(cfg.SSH.KeyPath)
 	if err != nil {
+		logger.Error("failed to read SSH key", "key_path", cfg.SSH.KeyPath, "error", err)
 		return nil, fmt.Errorf("reading SSH key %s: %w", cfg.SSH.KeyPath, err)
 	}
 
 	signer, err := ssh.ParsePrivateKey(keyData)
 	if err != nil {
+		logger.Error("failed to parse SSH key", "key_path", cfg.SSH.KeyPath, "error", err)
 		return nil, fmt.Errorf("parsing SSH key: %w", err)
 	}
 
@@ -61,6 +71,7 @@ func NewSSHPool(cfg *config.Config) (*SSHPool, error) {
 		connections: make(map[string]*sshConn),
 		sshConfig:   sshCfg,
 		hostConfigs: hostMap,
+		logger:      logger,
 	}
 
 	return pool, nil
@@ -88,6 +99,7 @@ func (p *SSHPool) reconnect(hostName string) (*sshConn, error) {
 
 	hostCfg, exists := p.hostConfigs[hostName]
 	if !exists {
+		p.logger.Error("unknown host for SSH reconnect", "host", hostName)
 		return nil, fmt.Errorf("unknown host: %s", hostName)
 	}
 
@@ -96,12 +108,14 @@ func (p *SSHPool) reconnect(hostName string) (*sshConn, error) {
 
 	client, err := ssh.Dial("tcp", hostCfg.SSHAddress(), &sshCfg)
 	if err != nil {
+		p.logger.Error("SSH connection failed", "host", hostName, "address", hostCfg.SSHAddress(), "error", err)
 		return nil, fmt.Errorf("SSH connection to %s (%s): %w", hostName, hostCfg.SSHAddress(), err)
 	}
 
 	conn := &sshConn{
 		client: client,
 		host:   hostCfg,
+		logger: p.logger,
 	}
 	p.connections[hostName] = conn
 
@@ -125,11 +139,13 @@ func (c *sshConn) Run(ctx context.Context, command string) (*CommandResult, erro
 	defer c.mu.Unlock()
 
 	if c.client == nil {
+		c.logger.Error("SSH command attempted on closed connection", "host", c.host.Name, "command", command)
 		return nil, fmt.Errorf("SSH connection is closed")
 	}
 
 	session, err := c.client.NewSession()
 	if err != nil {
+		c.logger.Error("failed to create SSH session", "host", c.host.Name, "command", command, "error", err)
 		return nil, fmt.Errorf("creating SSH session: %w", err)
 	}
 	defer session.Close()
@@ -148,6 +164,7 @@ func (c *sshConn) Run(ctx context.Context, command string) (*CommandResult, erro
 	select {
 	case <-ctx.Done():
 		session.Signal(ssh.SIGTERM)
+		c.logger.Error("SSH command canceled", "host", c.host.Name, "command", command, "error", ctx.Err())
 		return nil, ctx.Err()
 	case err := <-done:
 		result := &CommandResult{
@@ -159,7 +176,9 @@ func (c *sshConn) Run(ctx context.Context, command string) (*CommandResult, erro
 		if err != nil {
 			if exitErr, ok := err.(*ssh.ExitError); ok {
 				result.ExitCode = exitErr.ExitStatus()
+				c.logger.Error("SSH command exited with non-zero status", "host", c.host.Name, "command", command, "exit_code", result.ExitCode, "stderr", strings.TrimSpace(result.Stderr))
 			} else {
+				c.logger.Error("SSH command execution failed", "host", c.host.Name, "command", command, "error", err)
 				return result, fmt.Errorf("running command: %w", err)
 			}
 		}

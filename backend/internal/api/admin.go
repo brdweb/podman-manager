@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"golang.org/x/crypto/bcrypt"
@@ -37,6 +36,7 @@ func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 	cfg := s.configSnapshot()
 	raw, err := os.ReadFile(s.configPath)
 	if err != nil {
+		s.logger.Error("failed to read config file", "path", s.configPath, "error", err)
 		writeError(w, http.StatusInternalServerError, fmt.Sprintf("reading config file: %v", err))
 		return
 	}
@@ -55,12 +55,14 @@ func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 	var req updateConfigRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		s.logger.Error("failed to decode config update payload", "error", err)
 		writeError(w, http.StatusBadRequest, "invalid config payload")
 		return
 	}
 
 	cfg, err := config.LoadBytes([]byte(req.YAML))
 	if err != nil {
+		s.logger.Error("failed to parse config YAML", "error", err)
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -73,6 +75,7 @@ func (s *Server) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 	if strings.TrimSpace(req.Auth.Password) != "" {
 		hashed, err := bcrypt.GenerateFromPassword([]byte(req.Auth.Password), bcrypt.DefaultCost)
 		if err != nil {
+			s.logger.Error("failed to hash auth password", "error", err)
 			writeError(w, http.StatusInternalServerError, "failed to hash password")
 			return
 		}
@@ -85,29 +88,33 @@ func (s *Server) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := cfg.Validate(); err != nil {
+		s.logger.Error("config validation failed", "error", err)
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	data, err := config.Marshal(cfg)
 	if err != nil {
+		s.logger.Error("failed to marshal config", "error", err)
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	newPool, err := podman.NewSSHPool(cfg)
+	newPool, err := podman.NewSSHPool(cfg, s.logger)
 	if err != nil {
+		s.logger.Error("failed to initialize SSH pool for updated config", "error", err)
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	if err := writeConfigAtomically(s.configPath, data); err != nil {
+		s.logger.Error("failed to write config file", "path", s.configPath, "error", err)
 		newPool.Close()
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	newClient := podman.NewClient(newPool)
+	newClient := podman.NewClient(newPool, s.logger)
 
 	s.mu.Lock()
 	oldPool := s.pool
@@ -127,9 +134,15 @@ func (s *Server) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func getTempDir() string {
+	if dir := os.Getenv("PODMAN_MANAGER_TEMP_DIR"); dir != "" {
+		return dir
+	}
+	return "/tmp"
+}
+
 func writeConfigAtomically(path string, data []byte) error {
-	dir := filepath.Dir(path)
-	tmp, err := os.CreateTemp(dir, "podman-manager-*.yaml")
+	tmp, err := os.CreateTemp(getTempDir(), "podman-manager-*.yaml")
 	if err != nil {
 		return fmt.Errorf("creating temp config file: %w", err)
 	}

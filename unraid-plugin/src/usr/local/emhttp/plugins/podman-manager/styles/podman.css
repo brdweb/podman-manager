@@ -14,6 +14,9 @@
   vertical-align: top;
   font-size: 0.9em;
 }
+.podman-ct-row {
+  cursor: pointer;
+}
 .podman-ct-row:hover {
   background: rgba(255, 255, 255, 0.03);
 }
@@ -158,17 +161,32 @@
 .podman-detail-close a:hover {
   opacity: 1;
 }
-.podman-detail-table {
+.podman-detail-layout {
   width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
 }
-.podman-detail-table td {
-  padding: 4px 12px 4px 0;
+.podman-detail-cell {
+  padding: 10px 14px;
   vertical-align: top;
-  border-bottom: none;
+  border: 1px solid var(--border-color, #333);
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
 }
-.podman-detail-table td:first-child {
-  width: 150px;
-  white-space: nowrap;
+.podman-detail-runtime {
+  width: 33%;
+}
+.podman-detail-networking {
+  width: 67%;
+}
+.podman-detail-section-title {
+  font-weight: 600;
+  font-size: 1.05em;
+  margin-bottom: 8px;
+  color: inherit;
+  border-bottom: 1px solid var(--border-color, #333);
+  padding-bottom: 4px;
 }
 .podman-label {
   display: inline-block;

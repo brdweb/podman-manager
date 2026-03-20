@@ -2,7 +2,7 @@ package api
 
 import (
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 	"sync"
 	"time"
@@ -19,10 +19,15 @@ type Server struct {
 	pool       *podman.SSHPool
 	mux        *http.ServeMux
 	sessions   *sessionStore
+	logger     *slog.Logger
 }
 
-func NewServer(configPath string, cfg *config.Config) (*Server, error) {
-	pool, err := podman.NewSSHPool(cfg)
+func NewServer(configPath string, cfg *config.Config, logger *slog.Logger) (*Server, error) {
+	if logger == nil {
+		logger = slog.Default()
+	}
+
+	pool, err := podman.NewSSHPool(cfg, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -30,9 +35,10 @@ func NewServer(configPath string, cfg *config.Config) (*Server, error) {
 	s := &Server{
 		configPath: config.ExpandPath(configPath),
 		config:     cfg,
-		client:     podman.NewClient(pool),
+		client:     podman.NewClient(pool, logger),
 		pool:       pool,
 		sessions:   newSessionStore(),
+		logger:     logger,
 	}
 	s.mux = http.NewServeMux()
 	s.registerRoutes()
@@ -102,7 +108,7 @@ func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(data); err != nil {
-		log.Printf("error encoding response: %v", err)
+		slog.Error("error encoding response", "error", err)
 	}
 }
 
@@ -129,6 +135,6 @@ func withLogging(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		next.ServeHTTP(w, r)
-		log.Printf("%s %s %s", r.Method, r.URL.Path, time.Since(start).Round(time.Millisecond))
+		slog.Info("http request", "method", r.Method, "path", r.URL.Path, "duration", time.Since(start).Round(time.Millisecond))
 	})
 }

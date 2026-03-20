@@ -4,7 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -27,20 +27,25 @@ func main() {
 		os.Exit(0)
 	}
 
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	slog.SetDefault(logger)
+
 	cfg, err := config.Load(*configPath)
 	if err != nil {
-		log.Fatalf("failed to load config: %v", err)
+		logger.Error("failed to load config", "config_path", *configPath, "error", err)
+		os.Exit(1)
 	}
 
-	log.Printf("podman-manager %s starting", version)
-	log.Printf("configured %d host(s)", len(cfg.Hosts))
+	logger.Info("podman-manager starting", "version", version)
+	logger.Info("configured hosts", "count", len(cfg.Hosts))
 	for _, h := range cfg.Hosts {
-		log.Printf("  - %s (%s@%s, %s)", h.Name, h.User, h.Address, h.Mode)
+		logger.Info("configured host", "name", h.Name, "user", h.User, "address", h.Address, "mode", h.Mode)
 	}
 
-	server, err := api.NewServer(*configPath, cfg)
+	server, err := api.NewServer(*configPath, cfg, logger)
 	if err != nil {
-		log.Fatalf("failed to initialize API server: %v", err)
+		logger.Error("failed to initialize API server", "error", err)
+		os.Exit(1)
 	}
 	defer server.Close()
 
@@ -54,24 +59,25 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("API server listening on %s", addr)
+		logger.Info("API server listening", "address", addr)
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("server error: %v", err)
+			logger.Error("server error", "error", err)
+			os.Exit(1)
 		}
 	}()
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	sig := <-quit
-	log.Printf("received %s, shutting down", sig)
+	logger.Info("received signal, shutting down", "signal", sig.String())
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	if err := httpServer.Shutdown(ctx); err != nil {
-		log.Printf("graceful shutdown failed: %v", err)
+		logger.Error("graceful shutdown failed", "error", err)
 	}
 
 	server.Close()
-	log.Println("podman-manager stopped")
+	logger.Info("podman-manager stopped")
 }

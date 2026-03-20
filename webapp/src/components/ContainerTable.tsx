@@ -74,20 +74,19 @@ function ContainerTableRow({
 
   return (
     <>
-      <tr className="border-b border-zinc-800/80 hover:bg-zinc-900/60 transition-colors">
+      <tr
+        className="border-b border-zinc-800/80 hover:bg-zinc-900/60 transition-colors cursor-pointer"
+        onClick={onToggle}
+      >
         <td className="px-4 py-3">
-          <button
-            type="button"
-            onClick={onToggle}
-            className="text-left group"
-          >
+          <div className="group">
             <span className="font-medium text-zinc-100 group-hover:text-white">
               {container.name}
             </span>
             <span className="ml-2 text-xs uppercase tracking-[0.2em] text-zinc-500">
               {container.manager}
             </span>
-          </button>
+          </div>
           <p className="mt-1 max-w-80 truncate text-xs font-mono text-zinc-500">
             {container.image}
           </p>
@@ -114,29 +113,38 @@ function ContainerTableRow({
         </td>
         <td className="px-4 py-3">
           <div className="flex flex-wrap gap-1.5">
-            {isRunning ? (
-              <>
-                <ActionButton
-                  label="Stop"
-                  onClick={() => stop.mutate({ host: container.host, id: container.id })}
-                  disabled={stop.isPending}
-                  variant="danger"
-                />
-                <ActionButton
-                  label="Restart"
-                  onClick={() => restart.mutate({ host: container.host, id: container.id })}
-                  disabled={restart.isPending}
-                  variant="neutral"
-                />
-              </>
-            ) : (
-              <ActionButton
-                label="Start"
-                onClick={() => start.mutate({ host: container.host, id: container.id })}
-                disabled={start.isPending}
-                variant="success"
-              />
-            )}
+             {isRunning ? (
+               <>
+                 <ActionButton
+                   label="Stop"
+                   onClick={(e) => {
+                     e.stopPropagation();
+                     stop.mutate({ host: container.host, id: container.id });
+                   }}
+                   disabled={stop.isPending}
+                   variant="danger"
+                 />
+                 <ActionButton
+                   label="Restart"
+                   onClick={(e) => {
+                     e.stopPropagation();
+                     restart.mutate({ host: container.host, id: container.id });
+                   }}
+                   disabled={restart.isPending}
+                   variant="neutral"
+                 />
+               </>
+             ) : (
+               <ActionButton
+                 label="Start"
+                 onClick={(e) => {
+                   e.stopPropagation();
+                   start.mutate({ host: container.host, id: container.id });
+                 }}
+                 disabled={start.isPending}
+                 variant="success"
+               />
+             )}
           </div>
         </td>
       </tr>
@@ -170,69 +178,75 @@ function ContainerExpandedRow({
         {error && <p className="text-sm text-red-400">{error.message}</p>}
         {data && (
           <div className="grid gap-4 lg:grid-cols-3">
-            <DetailCard title="Runtime">
-              <DetailLine label="Hostname" value={data.hostname || '-'} />
-              <DetailLine label="Restart" value={data.restart_policy || '-'} />
-              <DetailLine label="PID" value={data.pid ? String(data.pid) : '-'} />
-              <DetailLine label="Started" value={formatTimestamp(data.started_at)} />
-              <DetailLine label="Finished" value={formatTimestamp(data.finished_at)} />
-              <DetailLine
-                label="Memory"
-                value={
-                  data.stats?.memory_usage_bytes
-                    ? `${formatBytes(data.stats.memory_usage_bytes)} / ${formatBytes(data.stats.memory_limit_bytes)} (${formatPercent(data.stats.memory_percent)})`
-                    : '-'
-                }
-              />
-            </DetailCard>
+            <div className="lg:col-span-1">
+              <DetailCard title="Runtime">
+                <DetailLine label="Hostname" value={data.hostname || '-'} />
+                <DetailLine label="Restart" value={data.restart_policy || '-'} />
+                <DetailLine label="PID" value={data.pid ? String(data.pid) : '-'} />
+                <DetailLine label="Started" value={formatTimestamp(data.started_at)} />
+                <DetailLine label="Finished" value={formatTimestamp(data.finished_at)} />
+                <DetailLine
+                  label="Memory"
+                  value={
+                    data.stats?.memory_usage_bytes
+                      ? `${formatBytes(data.stats.memory_usage_bytes)} / ${formatBytes(data.stats.memory_limit_bytes)} (${formatPercent(data.stats.memory_percent)})`
+                      : '-'
+                  }
+                />
+              </DetailCard>
+            </div>
 
-            <DetailCard title="Volumes">
-              {data.mounts?.length ? (
-                data.mounts.map((mount) => (
-                  <p key={`${mount.source}-${mount.destination}`} className="text-sm text-zinc-300">
-                    <span className="font-mono text-zinc-100">{mount.destination}</span>
-                    <span className="mx-2 text-zinc-600">&larr;</span>
-                    <span className="font-mono text-zinc-500">{mount.source}</span>
-                    <span className="ml-2 text-xs uppercase tracking-[0.2em] text-zinc-500">
-                      {mount.rw ? 'rw' : 'ro'}
-                    </span>
-                  </p>
-                ))
-              ) : (
-                <p className="text-sm text-zinc-500">No mounted volumes.</p>
-              )}
-            </DetailCard>
+            <div className="lg:col-span-2">
+              <DetailCard title="Networking">
+                {data.networks?.length ? (
+                  data.networks.map((network) => (
+                    <p key={network.name} className="text-sm text-zinc-300">
+                      <span className="font-medium text-zinc-100">{network.name}</span>
+                      <span className="ml-2 text-zinc-500">{network.ip || 'no IP'}</span>
+                      {network.gateway && (
+                        <span className="ml-2 text-zinc-600">gw {network.gateway}</span>
+                      )}
+                    </p>
+                  ))
+                ) : (
+                  <p className="text-sm text-zinc-500">No network details.</p>
+                )}
 
-            <DetailCard title="Networking">
-              {data.networks?.length ? (
-                data.networks.map((network) => (
-                  <p key={network.name} className="text-sm text-zinc-300">
-                    <span className="font-medium text-zinc-100">{network.name}</span>
-                    <span className="ml-2 text-zinc-500">{network.ip || 'no IP'}</span>
-                    {network.gateway && (
-                      <span className="ml-2 text-zinc-600">gw {network.gateway}</span>
-                    )}
-                  </p>
-                ))
-              ) : (
-                <p className="text-sm text-zinc-500">No network details.</p>
-              )}
-
-              {data.labels && Object.keys(data.labels).length > 0 && (
-                <div className="mt-4 border-t border-zinc-800 pt-4">
-                  <p className="mb-2 text-xs uppercase tracking-[0.2em] text-zinc-500">Labels</p>
-                  <div className="space-y-1">
-                    {Object.entries(data.labels).map(([key, value]) => (
-                      <p key={key} className="break-all text-sm text-zinc-400">
-                        <span className="font-mono text-zinc-200">{key}</span>
-                        <span className="mx-2 text-zinc-700">=</span>
-                        <span className="font-mono text-zinc-500">{value}</span>
-                      </p>
-                    ))}
+                {data.labels && Object.keys(data.labels).length > 0 && (
+                  <div className="mt-4 border-t border-zinc-800 pt-4">
+                    <p className="mb-2 text-xs uppercase tracking-[0.2em] text-zinc-500">Labels</p>
+                    <div className="space-y-1">
+                      {Object.entries(data.labels).map(([key, value]) => (
+                        <p key={key} className="break-all text-sm text-zinc-400">
+                          <span className="font-mono text-zinc-200">{key}</span>
+                          <span className="mx-2 text-zinc-700">=</span>
+                          <span className="font-mono text-zinc-500">{value}</span>
+                        </p>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
-            </DetailCard>
+                )}
+              </DetailCard>
+            </div>
+
+            <div className="lg:col-span-3">
+              <DetailCard title="Volumes">
+                {data.mounts?.length ? (
+                  data.mounts.map((mount) => (
+                    <p key={`${mount.source}-${mount.destination}`} className="text-sm text-zinc-300">
+                      <span className="font-mono text-zinc-100">{mount.destination}</span>
+                      <span className="mx-2 text-zinc-600">&larr;</span>
+                      <span className="font-mono text-zinc-500">{mount.source}</span>
+                      <span className="ml-2 text-xs uppercase tracking-[0.2em] text-zinc-500">
+                        {mount.rw ? 'rw' : 'ro'}
+                      </span>
+                    </p>
+                  ))
+                ) : (
+                  <p className="text-sm text-zinc-500">No mounted volumes.</p>
+                )}
+              </DetailCard>
+            </div>
           </div>
         )}
       </td>
@@ -283,7 +297,7 @@ function DetailLine({ label, value }: { label: string; value: string }) {
 
 interface ActionButtonProps {
   label: string;
-  onClick: () => void;
+  onClick: (e: React.MouseEvent<HTMLButtonElement>) => void;
   disabled: boolean;
   variant: 'success' | 'danger' | 'neutral';
 }

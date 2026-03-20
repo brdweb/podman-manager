@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"math"
 	"strconv"
 	"strings"
@@ -14,11 +15,15 @@ import (
 )
 
 type Client struct {
-	pool *SSHPool
+	pool   *SSHPool
+	logger *slog.Logger
 }
 
-func NewClient(pool *SSHPool) *Client {
-	return &Client{pool: pool}
+func NewClient(pool *SSHPool, logger *slog.Logger) *Client {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &Client{pool: pool, logger: logger}
 }
 
 func (c *Client) podmanCmd(host config.HostConfig) string {
@@ -39,9 +44,11 @@ func (c *Client) ListContainers(ctx context.Context, hostName string) ([]Contain
 
 	result, err := conn.Run(ctx, cmd)
 	if err != nil {
+		c.logger.Error("podman command execution failed", "host", hostName, "command", cmd, "error", err)
 		return nil, fmt.Errorf("listing containers on %s: %w", hostName, err)
 	}
 	if result.ExitCode != 0 {
+		c.logger.Error("podman command returned non-zero exit", "host", hostName, "command", cmd, "exit_code", result.ExitCode, "stderr", strings.TrimSpace(result.Stderr))
 		return nil, fmt.Errorf("podman ps failed on %s: %s", hostName, result.Stderr)
 	}
 
@@ -90,9 +97,11 @@ func (c *Client) ListContainerStats(ctx context.Context, hostName string) (map[s
 
 	result, err := conn.Run(ctx, cmd)
 	if err != nil {
+		c.logger.Error("podman command execution failed", "host", hostName, "command", cmd, "error", err)
 		return nil, fmt.Errorf("getting container stats on %s: %w", hostName, err)
 	}
 	if result.ExitCode != 0 {
+		c.logger.Error("podman command returned non-zero exit", "host", hostName, "command", cmd, "exit_code", result.ExitCode, "stderr", strings.TrimSpace(result.Stderr))
 		return nil, fmt.Errorf("podman stats failed on %s: %s", hostName, strings.TrimSpace(result.Stderr))
 	}
 
@@ -148,9 +157,11 @@ func (c *Client) HostSystemInfo(ctx context.Context, hostName string) (*HostSyst
 
 	result, err := conn.Run(ctx, cmd)
 	if err != nil {
+		c.logger.Error("host system info command execution failed", "host", hostName, "command", cmd, "error", err)
 		return nil, fmt.Errorf("getting system info on %s: %w", hostName, err)
 	}
 	if result.ExitCode != 0 {
+		c.logger.Error("host system info command returned non-zero exit", "host", hostName, "command", cmd, "exit_code", result.ExitCode, "stderr", strings.TrimSpace(result.Stderr))
 		return nil, fmt.Errorf("system info command failed on %s: %s", hostName, strings.TrimSpace(result.Stderr))
 	}
 
@@ -240,6 +251,11 @@ func (c *Client) listInactiveQuadletUnits(ctx context.Context, hostName string, 
 
 	result, err := conn.Run(ctx, cmd)
 	if err != nil || result.ExitCode != 0 {
+		if err != nil {
+			c.logger.Error("quadlet discovery command execution failed", "host", hostName, "command", cmd, "error", err)
+		} else {
+			c.logger.Error("quadlet discovery command returned non-zero exit", "host", hostName, "command", cmd, "exit_code", result.ExitCode, "stderr", strings.TrimSpace(result.Stderr))
+		}
 		return nil
 	}
 
@@ -302,9 +318,11 @@ func (c *Client) InspectContainer(ctx context.Context, hostName, containerID str
 
 	result, err := conn.Run(ctx, cmd)
 	if err != nil {
+		c.logger.Error("podman command execution failed", "host", hostName, "command", cmd, "error", err)
 		return nil, fmt.Errorf("inspecting container %s on %s: %w", safeID, hostName, err)
 	}
 	if result.ExitCode != 0 {
+		c.logger.Error("podman command returned non-zero exit", "host", hostName, "command", cmd, "exit_code", result.ExitCode, "stderr", strings.TrimSpace(result.Stderr), "container", safeID)
 		return nil, fmt.Errorf("podman inspect failed on %s: %s", hostName, result.Stderr)
 	}
 
@@ -364,10 +382,12 @@ func (c *Client) containerAction(ctx context.Context, hostName, containerID, act
 
 	result, err := conn.Run(ctx, cmd)
 	if err != nil {
+		c.logger.Error("container action command execution failed", "host", hostName, "container", safeID, "action", action, "command", cmd, "error", err)
 		return &ActionResult{Success: false, Error: err.Error()}, nil
 	}
 
 	if result.ExitCode != 0 {
+		c.logger.Error("container action command returned non-zero exit", "host", hostName, "container", safeID, "action", action, "command", cmd, "exit_code", result.ExitCode, "stderr", strings.TrimSpace(result.Stderr))
 		return &ActionResult{
 			Success: false,
 			Error:   strings.TrimSpace(result.Stderr),
@@ -389,6 +409,7 @@ func (c *Client) getSystemdUnit(ctx context.Context, hostName string, hostCfg co
 	cmd := fmt.Sprintf(`%s inspect --format '{{index .Config.Labels "PODMAN_SYSTEMD_UNIT"}}' %s`, c.podmanCmd(hostCfg), containerID)
 	result, err := conn.Run(ctx, cmd)
 	if err != nil {
+		c.logger.Error("systemd unit lookup command execution failed", "host", hostName, "container", containerID, "command", cmd, "error", err)
 		return ""
 	}
 
@@ -421,6 +442,7 @@ func (c *Client) ContainerLogs(ctx context.Context, hostName, containerID string
 
 	result, err := conn.Run(ctx, cmd)
 	if err != nil {
+		c.logger.Error("container logs command execution failed", "host", hostName, "container", safeID, "command", cmd, "error", err)
 		return "", fmt.Errorf("getting logs for %s on %s: %w", safeID, hostName, err)
 	}
 
@@ -484,6 +506,9 @@ func (c *Client) hostStatus(ctx context.Context, hostName string) HostStatus {
 	hs.Status = "online"
 	if info, err := c.HostSystemInfo(ctx, hostName); err == nil {
 		hs.System = info
+	} else {
+		c.logger.Error("failed to get system info", "host", hostName, "error", err)
+		hs.Error = fmt.Sprintf("system info: %v", err)
 	}
 	hs.Containers = containers
 	hs.ContainerCount.Total = len(containers)
