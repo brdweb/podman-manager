@@ -16,12 +16,12 @@
 
 <CHANGES>
 ### 2026.03.20
-- ci: add release workflow for Unraid plugin
+- fix: include Docker image build in release workflow
 </CHANGES>
 
 <FILE Name="&pluginLOC;/&name;-&version;-x86_64-1.txz" Run="upgradepkg --install-new">
   <URL>https://github.com/&github;/releases/download/v&version;/&name;-&version;-x86_64-1.txz</URL>
-  <SHA256>be36f03bc42065ce1a81bbbca64be4334bc7f71df07ca857701dc9425a99fc9e</SHA256>
+  <SHA256>0ca29c2f2e1abcceb12a8d98a3030bf2d6d022307cd6ac64e8f79cfb92ad8efd</SHA256>
 </FILE>
 
 <FILE Run="/bin/bash">
