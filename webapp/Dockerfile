@@ -1,9 +1,10 @@
 FROM golang:1.26.1-alpine AS backend-build
+ARG VERSION=dev
 WORKDIR /src/backend
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 COPY backend/ ./
-RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /out/podman-manager ./cmd/podman-manager
+RUN CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=${VERSION}" -o /out/podman-manager ./cmd/podman-manager
 
 FROM node:22-alpine AS frontend-build
 WORKDIR /src/webapp
