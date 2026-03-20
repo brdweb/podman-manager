@@ -16,12 +16,12 @@
 
 <CHANGES>
 ### 2026.03.20
-- feat: add container update check and update functionality
+- chore: update .plg for v2026.03.20
 </CHANGES>
 
 <FILE Name="&pluginLOC;/&name;-&version;-x86_64-1.txz" Run="upgradepkg --install-new">
   <URL>https://github.com/&github;/releases/download/v&version;/&name;-&version;-x86_64-1.txz</URL>
-  <SHA256>5d32197ad4e73b6aacbf2ff14f4a78a5090b0759d762d5d1bf410e1f1ed33d1c</SHA256>
+  <SHA256>c430372fb12f1a17910dd0513c15e89f617a4d55f0ea37b112167c27cca3aac2</SHA256>
 </FILE>
 
 <FILE Run="/bin/bash">
