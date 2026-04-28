@@ -65,7 +65,10 @@ var podmanDashRefreshMs={$refreshInterval};
 var podmanDashTimer=null;
 var podmanDashBackendUp={$backendUpJs};
 var podmanDashSettingsUrl='{$settingsUrl}';
-function podmanDashApi(p){return podmanDashProxy+'?action=api_proxy&path='+encodeURIComponent('/api'+p)}
+var podmanDashCsrfToken='{$var["csrf_token"]}';
+function podmanDashEscape(v){return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
+function podmanDashJsArg(v){return podmanDashEscape(String(v).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\r/g,'\\r').replace(/\n/g,'\\n'))}
+function podmanDashApi(p){return podmanDashProxy+'?action=api_proxy&csrf_token='+encodeURIComponent(podmanDashCsrfToken)+'&path='+encodeURIComponent('/api'+p)}
 function podmanDashLoad(){
 if(!podmanDashBackendUp)return;
 \$.getJSON(podmanDashApi('/overview'),function(data){podmanDashRender(data)}).fail(function(){
@@ -87,18 +90,18 @@ host.containers.forEach(function(ct){all.push({offline:false,hostName:host.name,
 all.sort(function(a,b){if(a.offline!==b.offline)return a.offline?1:-1;var an=a.ct?a.ct.name.toLowerCase():'';var bn=b.ct?b.ct.name.toLowerCase():'';return an<bn?-1:an>bn?1:0});
 var html='<table class="podman-dash-table">';
 all.forEach(function(row){
-if(row.offline){html+='<tr class="podman-dash-ct podman-dash-offline"><td class="podman-dash-state"><i class="fa fa-times-circle red-text"></i></td><td class="podman-dash-name-cell" colspan="2"><span class="podman-dash-name">'+row.hostName+'</span></td><td class="podman-dash-actions red-text">Offline</td></tr>';return}
+if(row.offline){html+='<tr class="podman-dash-ct podman-dash-offline"><td class="podman-dash-state"><i class="fa fa-times-circle red-text"></i></td><td class="podman-dash-name-cell" colspan="2"><span class="podman-dash-name">'+podmanDashEscape(row.hostName)+'</span></td><td class="podman-dash-actions red-text">Offline</td></tr>';return}
 var ct=row.ct;var hn=row.hostName;
 var si='fa-circle',sc='orange-text';
 if(ct.state==='running'){si='fa-play';sc='green-text'}else if(ct.state==='exited'||ct.state==='stopped'){si='fa-square';sc='red-text'}
 var at=ct.id;
 var act='';
-if(ct.state==='running'){act='<span class="podman-dash-action fa fa-stop hand" title="Stop" onclick="podmanDashAction(\''+hn+'\',\''+at+'\',\'stop\')"></span><span class="podman-dash-action fa fa-refresh hand" title="Restart" onclick="podmanDashAction(\''+hn+'\',\''+at+'\',\'restart\')"></span>'}
-else{act='<span class="podman-dash-action fa fa-play hand" title="Start" onclick="podmanDashAction(\''+hn+'\',\''+at+'\',\'start\')"></span>'}
+if(ct.state==='running'){act='<span class="podman-dash-action fa fa-stop hand" title="Stop" onclick="podmanDashAction(\''+podmanDashJsArg(hn)+'\',\''+podmanDashJsArg(at)+'\',\'stop\')"></span><span class="podman-dash-action fa fa-refresh hand" title="Restart" onclick="podmanDashAction(\''+podmanDashJsArg(hn)+'\',\''+podmanDashJsArg(at)+'\',\'restart\')"></span>'}
+else{act='<span class="podman-dash-action fa fa-play hand" title="Start" onclick="podmanDashAction(\''+podmanDashJsArg(hn)+'\',\''+podmanDashJsArg(at)+'\',\'start\')"></span>'}
 var mb='';
 if(ct.manager==='quadlet')mb=' <span class="podman-mgr-badge podman-mgr-quadlet" title="Quadlet">Q</span>';
 else if(ct.manager==='compose')mb=' <span class="podman-mgr-badge podman-mgr-compose" title="Compose">C</span>';
-html+='<tr class="podman-dash-ct" data-host="'+hn+'" data-target="'+at+'"><td class="podman-dash-state"><i class="fa '+si+' '+sc+'"></i></td><td class="podman-dash-name-cell"><span class="podman-dash-name">'+ct.name+'</span>'+mb+'</td><td class="podman-dash-host">'+hn+'</td><td class="podman-dash-actions">'+act+'</td></tr>';
+html+='<tr class="podman-dash-ct" data-host="'+podmanDashEscape(hn)+'" data-target="'+podmanDashEscape(at)+'"><td class="podman-dash-state"><i class="fa '+si+' '+sc+'"></i></td><td class="podman-dash-name-cell"><span class="podman-dash-name">'+podmanDashEscape(ct.name)+'</span>'+mb+'</td><td class="podman-dash-host">'+podmanDashEscape(hn)+'</td><td class="podman-dash-actions">'+act+'</td></tr>';
 });
 html+='</table>';
 \$('#podman-dash-body').html(html);
