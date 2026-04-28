@@ -13,7 +13,6 @@ backend/bin/
 coverage.html
 
 # Go workspace
-go.work
 go.work.sum
 
 # Build artifacts
