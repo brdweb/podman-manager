@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import type { Container } from '../types/api';
 import { useContainerAction, useContainerDetail, useCheckUpdate, useUpdateContainer } from '../hooks/useContainers';
 import { StatusBadge } from './StatusBadge';
@@ -11,13 +11,86 @@ interface ContainerTableProps {
   emptyMessage?: string;
 }
 
+type SortKey = 'name' | 'host' | 'state' | 'cpu' | 'memory';
+
 export function ContainerTable({
   containers,
   showHost = false,
   emptyMessage = 'No containers found.',
 }: ContainerTableProps) {
+  const { start, stop, restart } = useContainerAction();
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [viewingLogsFor, setViewingLogsFor] = useState<{host: string, id: string, name: string} | null>(null);
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => new Set());
+  const [sort, setSort] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({
+    key: 'name',
+    direction: 'asc',
+  });
+  const [bulkError, setBulkError] = useState<string | null>(null);
+  const [bulkAction, setBulkAction] = useState<'start' | 'stop' | 'restart' | null>(null);
+
+  const sortedContainers = useMemo(() => {
+    const direction = sort.direction === 'asc' ? 1 : -1;
+    return [...containers].sort((a, b) => compareContainers(a, b, sort.key) * direction);
+  }, [containers, sort]);
+
+  const selectedContainers = sortedContainers.filter((container) =>
+    selectedKeys.has(containerKey(container))
+  );
+  const allVisibleSelected = sortedContainers.length > 0 && selectedContainers.length === sortedContainers.length;
+  const isBulkPending = bulkAction !== null;
+
+  function handleSort(key: SortKey) {
+    setSort((current) => ({
+      key,
+      direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc',
+    }));
+  }
+
+  function toggleAllVisible(checked: boolean) {
+    setSelectedKeys((current) => {
+      const next = new Set(current);
+      for (const container of sortedContainers) {
+        const key = containerKey(container);
+        if (checked) {
+          next.add(key);
+        } else {
+          next.delete(key);
+        }
+      }
+      return next;
+    });
+  }
+
+  function toggleContainer(container: Container, checked: boolean) {
+    setSelectedKeys((current) => {
+      const next = new Set(current);
+      const key = containerKey(container);
+      if (checked) {
+        next.add(key);
+      } else {
+        next.delete(key);
+      }
+      return next;
+    });
+  }
+
+  async function runBulkAction(action: 'start' | 'stop' | 'restart') {
+    setBulkError(null);
+    setBulkAction(action);
+
+    try {
+      const mutation = action === 'start' ? start : action === 'stop' ? stop : restart;
+      for (const container of selectedContainers) {
+        await mutation.mutateAsync({ host: container.host, id: container.id });
+      }
+      setSelectedKeys(new Set());
+    } catch (error) {
+      setBulkError(error instanceof Error ? error.message : `Failed to ${action} selected containers`);
+    } finally {
+      setBulkAction(null);
+    }
+  }
 
   if (containers.length === 0) {
     return <p className="text-zinc-500 text-center py-12">{emptyMessage}</p>;
@@ -25,21 +98,51 @@ export function ContainerTable({
 
   return (
     <div className="overflow-x-auto rounded-2xl border border-zinc-800 bg-zinc-950/70">
+      {selectedContainers.length > 0 && (
+        <div className="flex flex-col gap-3 border-b border-zinc-800 bg-zinc-900/70 px-4 py-3 text-sm text-zinc-300 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <span className="font-medium text-zinc-100">{selectedContainers.length}</span> selected
+            {bulkError && <span className="ml-3 text-red-400">{bulkError}</span>}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <BulkButton label="Start" disabled={isBulkPending} active={bulkAction === 'start'} onClick={() => void runBulkAction('start')} />
+            <BulkButton label="Stop" disabled={isBulkPending} active={bulkAction === 'stop'} onClick={() => void runBulkAction('stop')} />
+            <BulkButton label="Restart" disabled={isBulkPending} active={bulkAction === 'restart'} onClick={() => void runBulkAction('restart')} />
+            <button
+              type="button"
+              onClick={() => setSelectedKeys(new Set())}
+              disabled={isBulkPending}
+              className="rounded-md px-3 py-1.5 text-xs font-medium text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200 disabled:opacity-50"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
       <table className="w-full text-left">
         <thead className="bg-zinc-900/80 text-zinc-400 text-sm">
           <tr>
-            <th className="px-4 py-3 font-medium">Container</th>
-            {showHost && <th className="px-4 py-3 font-medium">Host</th>}
-            <th className="px-4 py-3 font-medium">State</th>
-            <th className="px-4 py-3 font-medium">CPU</th>
-            <th className="px-4 py-3 font-medium">Memory</th>
+            <th className="w-10 px-4 py-3">
+              <input
+                type="checkbox"
+                checked={allVisibleSelected}
+                onChange={(event) => toggleAllVisible(event.target.checked)}
+                className="h-4 w-4 rounded border-zinc-700 bg-zinc-950 text-emerald-500"
+                aria-label="Select all visible containers"
+              />
+            </th>
+            <SortableHeader label="Container" sortKey="name" current={sort} onSort={handleSort} />
+            {showHost && <SortableHeader label="Host" sortKey="host" current={sort} onSort={handleSort} />}
+            <SortableHeader label="State" sortKey="state" current={sort} onSort={handleSort} />
+            <SortableHeader label="CPU" sortKey="cpu" current={sort} onSort={handleSort} />
+            <SortableHeader label="Memory" sortKey="memory" current={sort} onSort={handleSort} />
             <th className="px-4 py-3 font-medium">Network / Ports</th>
             <th className="px-4 py-3 font-medium">Actions</th>
           </tr>
         </thead>
         <tbody>
-          {containers.map((container) => {
-            const key = `${container.host}/${container.id}`;
+          {sortedContainers.map((container) => {
+            const key = containerKey(container);
             const isExpanded = expandedKey === key;
             return (
               <ContainerTableRow
@@ -47,6 +150,8 @@ export function ContainerTable({
                 container={container}
                 showHost={showHost}
                 isExpanded={isExpanded}
+                isSelected={selectedKeys.has(key)}
+                onSelectedChange={(checked) => toggleContainer(container, checked)}
                 onToggle={() => setExpandedKey(isExpanded ? null : key)}
                 onViewLogs={() => setViewingLogsFor({ host: container.host, id: container.id, name: container.name })}
               />
@@ -67,10 +172,83 @@ export function ContainerTable({
   );
 }
 
+function containerKey(container: Container): string {
+  return `${container.host}/${container.id}`;
+}
+
+function compareContainers(a: Container, b: Container, key: SortKey): number {
+  switch (key) {
+    case 'host':
+      return a.host.localeCompare(b.host) || a.name.localeCompare(b.name);
+    case 'state':
+      return a.state.localeCompare(b.state) || a.name.localeCompare(b.name);
+    case 'cpu':
+      return (a.stats?.cpu_percent ?? -1) - (b.stats?.cpu_percent ?? -1);
+    case 'memory':
+      return (a.stats?.memory_usage_bytes ?? -1) - (b.stats?.memory_usage_bytes ?? -1);
+    case 'name':
+    default:
+      return a.name.localeCompare(b.name) || a.host.localeCompare(b.host);
+  }
+}
+
+function SortableHeader({
+  label,
+  sortKey,
+  current,
+  onSort,
+}: {
+  label: string;
+  sortKey: SortKey;
+  current: { key: SortKey; direction: 'asc' | 'desc' };
+  onSort: (key: SortKey) => void;
+}) {
+  const active = current.key === sortKey;
+  const icon = !active ? '↕' : current.direction === 'asc' ? '↑' : '↓';
+
+  return (
+    <th className="px-4 py-3 font-medium">
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className="inline-flex items-center gap-1 text-left transition-colors hover:text-zinc-100"
+      >
+        <span>{label}</span>
+        <span className={active ? 'text-emerald-400' : 'text-zinc-600'}>{icon}</span>
+      </button>
+    </th>
+  );
+}
+
+function BulkButton({
+  label,
+  disabled,
+  active,
+  onClick,
+}: {
+  label: string;
+  disabled: boolean;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="rounded-md bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-900 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      {active ? `${label}...` : label}
+    </button>
+  );
+}
+
 interface ContainerTableRowProps {
   container: Container;
   showHost: boolean;
   isExpanded: boolean;
+  isSelected: boolean;
+  onSelectedChange: (checked: boolean) => void;
   onToggle: () => void;
   onViewLogs: () => void;
 }
@@ -79,6 +257,8 @@ function ContainerTableRow({
   container,
   showHost,
   isExpanded,
+  isSelected,
+  onSelectedChange,
   onToggle,
   onViewLogs,
 }: ContainerTableRowProps) {
@@ -87,7 +267,7 @@ function ContainerTableRow({
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isUpdateDialogOpen, setIsUpdateDialogOpen] = useState(false);
   const isRunning = container.state === 'running';
-  const colSpan = showHost ? 7 : 6;
+  const colSpan = showHost ? 8 : 7;
 
   const { data: updateCheck } = useCheckUpdate(container.host, container.id, isRunning);
   const hasUpdate = updateCheck?.update_available;
@@ -120,6 +300,15 @@ function ContainerTableRow({
         className="border-b border-zinc-800/80 hover:bg-zinc-900/60 transition-colors cursor-pointer"
         onClick={onToggle}
       >
+        <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}>
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={(event) => onSelectedChange(event.target.checked)}
+            className="h-4 w-4 rounded border-zinc-700 bg-zinc-950 text-emerald-500"
+            aria-label={`Select ${container.name}`}
+          />
+        </td>
         <td className="px-4 py-3">
           <div className="group flex items-center gap-2">
             <span className="font-medium text-zinc-100 group-hover:text-white">
