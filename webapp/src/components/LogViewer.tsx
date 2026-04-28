@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { get } from '../api/client';
+import { websocketURL } from '../api/client';
 
 interface LogViewerProps {
   host: string;
@@ -8,46 +8,84 @@ interface LogViewerProps {
   onClose: () => void;
 }
 
-interface LogsResponse {
-  logs: string;
+interface LogStreamMessage {
+  timestamp?: string;
+  message?: string;
+  error?: string;
 }
 
 const TAIL_OPTIONS = [100, 500, 1000, 5000] as const;
 
 export function LogViewer({ host, containerId, containerName, onClose }: LogViewerProps) {
-  const [logs, setLogs] = useState<string>('');
   const [tail, setTail] = useState<number>(100);
-  const [isLoading, setIsLoading] = useState(true);
+  const [logs, setLogs] = useState<string>('');
+  const [isPaused, setIsPaused] = useState(false);
+  const [status, setStatus] = useState<'connecting' | 'connected' | 'closed' | 'error'>('connecting');
   const [error, setError] = useState<string | null>(null);
-  
+
   const logsEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const pausedRef = useRef(false);
   const [autoScroll, setAutoScroll] = useState(true);
 
-  const fetchLogs = useCallback(async (hostName: string, id: string, tailLines: number) => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const response = await get<LogsResponse>(
-        `/api/hosts/${encodeURIComponent(hostName)}/containers/${encodeURIComponent(id)}/logs?tail=${tailLines}`
-      );
-      setLogs(response.logs || 'No logs available.');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch logs');
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  useEffect(() => {
+    pausedRef.current = isPaused;
+  }, [isPaused]);
 
   useEffect(() => {
-    fetchLogs(host, containerId, tail);
-  }, [host, containerId, tail, fetchLogs]);
+    const url = websocketURL(
+      `/api/hosts/${encodeURIComponent(host)}/containers/${encodeURIComponent(containerId)}/logs/stream?tail=${tail}`
+    );
+    const ws = new WebSocket(url);
+
+    ws.addEventListener('open', () => {
+      setLogs('');
+      setError(null);
+      setStatus('connected');
+    });
+
+    ws.addEventListener('message', (event) => {
+      let payload: LogStreamMessage;
+      try {
+        payload = JSON.parse(String(event.data)) as LogStreamMessage;
+      } catch {
+        payload = { message: String(event.data) };
+      }
+
+      if (payload.error) {
+        setError(payload.error);
+        setStatus('error');
+        return;
+      }
+
+      if (pausedRef.current || !payload.message) {
+        return;
+      }
+
+      setLogs((current) => `${current}${current ? '\n' : ''}${payload.message}`);
+    });
+
+    ws.addEventListener('error', () => {
+      setError('Log stream connection failed');
+      setStatus('error');
+    });
+
+    ws.addEventListener('close', () => {
+      setStatus((current) => (current === 'error' ? current : 'closed'));
+    });
+
+    return () => {
+      ws.close();
+    };
+  }, [containerId, host, tail]);
+
+  const isLoading = status === 'connecting' && logs === '' && !error;
 
   useEffect(() => {
     if (autoScroll && logsEndRef.current && !isLoading) {
       logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [autoScroll, isLoading]);
+  }, [autoScroll, isLoading, logs]);
 
   const handleScroll = useCallback(() => {
     if (!scrollContainerRef.current) return;
@@ -78,6 +116,9 @@ export function LogViewer({ host, containerId, containerName, onClose }: LogView
           <div className="flex items-center gap-3">
             <h3 className="font-medium text-zinc-100">Logs: {containerName}</h3>
             <span className="text-xs text-zinc-500">Last {tail} lines</span>
+            <span className="rounded-full border border-zinc-800 px-2 py-0.5 text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+              {status}
+            </span>
           </div>
           
           <div className="flex items-center gap-2">
@@ -98,6 +139,15 @@ export function LogViewer({ host, containerId, containerName, onClose }: LogView
               }`}
             >
               Auto-scroll {autoScroll ? 'On' : 'Off'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsPaused(!isPaused)}
+              className={`rounded px-3 py-1.5 text-xs font-medium transition-colors ${
+                isPaused ? 'bg-orange-600 text-white hover:bg-orange-500' : 'bg-zinc-800 text-zinc-200 hover:bg-zinc-700'
+              }`}
+            >
+              {isPaused ? 'Resume' : 'Pause'}
             </button>
             <button
               type="button"
@@ -129,7 +179,7 @@ export function LogViewer({ host, containerId, containerName, onClose }: LogView
             </div>
           ) : (
             <div className="space-y-0.5">
-              <pre className="whitespace-pre-wrap break-all">{logs}</pre>
+              <pre className="whitespace-pre-wrap break-all">{logs || 'Waiting for log output...'}</pre>
               <div ref={logsEndRef} />
             </div>
           )}

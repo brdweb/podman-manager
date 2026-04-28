@@ -1,7 +1,17 @@
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '';
 
+export function apiURL(path: string): string {
+  return `${API_BASE}${path}`;
+}
+
+export function websocketURL(path: string): string {
+  const url = new URL(apiURL(path), window.location.origin);
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  return url.toString();
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(apiURL(path), {
     credentials: 'same-origin',
     ...options,
     headers: {
