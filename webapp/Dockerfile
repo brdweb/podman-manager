@@ -1,4 +1,4 @@
-FROM golang:1.26.1-alpine AS backend-build
+FROM golang:1.26.2-alpine AS backend-build
 ARG VERSION=dev
 WORKDIR /src/backend
 COPY backend/go.mod backend/go.sum ./

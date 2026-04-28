@@ -250,11 +250,14 @@ npm run dev
 
 The dev server starts at `http://localhost:5173` and proxies `/api` requests to the backend at `localhost:18734`.
 
-### Production (Docker)
+### Production (Podman)
 
 ```bash
-cd webapp
-docker compose up --build
+podman build -f webapp/Dockerfile -t podman-manager .
+podman run --rm -p 8080:80 \
+  -v ./webapp/config.yaml:/etc/podman-manager/config.yaml:ro \
+  -v ~/.ssh/id_ed25519:/root/.ssh/id_ed25519:ro \
+  podman-manager
 ```
 
 This builds and starts a single container image that runs both the Go backend and nginx-served webapp on port 8080.
@@ -263,14 +266,14 @@ This builds and starts a single container image that runs both the Go backend an
 
 ### Prerequisites
 
-- Go 1.22+
+- Go 1.26.2+
 - Node.js 20+ (for webapp)
 
 ### Building
 
 Build the standalone container image:
 ```bash
-docker build -f webapp/Dockerfile -t podman-manager .
+podman build -f webapp/Dockerfile -t podman-manager .
 ```
 
 ### Plugin Packaging
