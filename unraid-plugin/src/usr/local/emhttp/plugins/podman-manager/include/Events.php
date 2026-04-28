@@ -12,65 +12,122 @@ $binary = '/usr/local/bin/podman-manager';
 $cfg = parse_plugin_cfg('podman-manager');
 $apiPort = $cfg['API_PORT'] ?? '18734';
 
+function respond_json($payload, $status = 200) {
+    http_response_code($status);
+    echo json_encode($payload);
+    exit;
+}
+
+function csrf_token_valid() {
+    global $var;
+
+    $expected = $var['csrf_token'] ?? '';
+    $provided = $_POST['csrf_token'] ?? $_GET['csrf_token'] ?? ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? '');
+
+    return $expected !== '' && is_string($provided) && hash_equals($expected, $provided);
+}
+
+function require_csrf_token() {
+    if (!csrf_token_valid()) {
+        respond_json(['error' => 'Invalid CSRF token'], 403);
+    }
+}
+
+function backend_status_code($headers) {
+    if (!is_array($headers) || empty($headers[0])) {
+        return 200;
+    }
+
+    if (preg_match('/\s(\d{3})\s/', $headers[0], $matches)) {
+        return (int) $matches[1];
+    }
+
+    return 200;
+}
+
+function backend_running($binary) {
+    return trim(shell_exec('pgrep -f ' . escapeshellarg($binary) . ' 2>/dev/null')) !== '';
+}
+
+function start_backend($binary, $configFile) {
+    exec(escapeshellarg($binary) . ' --config ' . escapeshellarg($configFile) . ' > /var/log/podman-manager.log 2>&1 &');
+}
+
+function stop_backend($binary) {
+    exec('pkill -f ' . escapeshellarg($binary) . ' 2>/dev/null');
+}
+
 switch ($action) {
     case 'api_proxy':
         $path = $_GET['path'] ?? '';
         if (strpos($path, '/api/') !== 0) {
-            http_response_code(400);
-            echo json_encode(['error' => 'Invalid API path']);
-            break;
+            respond_json(['error' => 'Invalid API path'], 400);
         }
+
+        $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
+        if ($method !== 'GET') {
+            require_csrf_token();
+        }
+
         $url = "http://127.0.0.1:$apiPort" . $path;
         $query = $_GET;
         unset($query['action'], $query['path']);
+        unset($query['csrf_token']);
         if ($query) $url .= '?' . http_build_query($query);
 
-        $opts = ['http' => ['timeout' => 10, 'ignore_errors' => true]];
-        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-            $opts['http']['method'] = 'POST';
-            $opts['http']['header'] = 'Content-Type: application/json';
+        $opts = ['http' => [
+            'method' => $method,
+            'timeout' => 10,
+            'ignore_errors' => true,
+            'header' => 'Content-Type: application/json',
+        ]];
+
+        if (in_array($method, ['POST', 'PUT', 'PATCH', 'DELETE'], true)) {
             $opts['http']['content'] = file_get_contents('php://input');
         }
+
         $ctx = stream_context_create($opts);
         $response = @file_get_contents($url, false, $ctx);
         if ($response === false) {
-            http_response_code(502);
-            echo json_encode(['error' => 'Backend unreachable']);
+            respond_json(['error' => 'Backend unreachable'], 502);
         } else {
+            http_response_code(backend_status_code($http_response_header ?? []));
             echo $response;
         }
         break;
 
     case 'backend_start':
-        if (trim(shell_exec("pgrep -f $binary 2>/dev/null")) !== '') {
-            echo json_encode(['success' => false, 'error' => 'Already running']);
-            break;
+        require_csrf_token();
+        if (backend_running($binary)) {
+            respond_json(['success' => false, 'error' => 'Already running']);
         }
-        exec("$binary --config $configFile > /var/log/podman-manager.log 2>&1 &");
+        start_backend($binary, $configFile);
         sleep(1);
-        $running = trim(shell_exec("pgrep -f $binary 2>/dev/null")) !== '';
+        $running = backend_running($binary);
         echo json_encode(['success' => $running, 'error' => $running ? '' : 'Failed to start']);
         break;
 
     case 'backend_stop':
-        exec("pkill -f $binary 2>/dev/null");
+        require_csrf_token();
+        stop_backend($binary);
         sleep(1);
         echo json_encode(['success' => true]);
         break;
 
     case 'backend_restart':
-        exec("pkill -f $binary 2>/dev/null");
+        require_csrf_token();
+        stop_backend($binary);
         sleep(2);
-        exec("$binary --config $configFile > /var/log/podman-manager.log 2>&1 &");
+        start_backend($binary, $configFile);
         sleep(1);
-        $running = trim(shell_exec("pgrep -f $binary 2>/dev/null")) !== '';
+        $running = backend_running($binary);
         echo json_encode(['success' => $running]);
         break;
 
     case 'generate_key':
+        require_csrf_token();
         if (file_exists($keyFile)) {
-            echo json_encode(['success' => false, 'error' => 'Key already exists']);
-            break;
+            respond_json(['success' => false, 'error' => 'Key already exists']);
         }
         exec("ssh-keygen -t ed25519 -f " . escapeshellarg($keyFile) . " -N '' 2>&1", $out, $ret);
         if ($ret === 0) {
