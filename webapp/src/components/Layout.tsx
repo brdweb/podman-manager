@@ -1,6 +1,7 @@
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { useLogout, useSession } from '../hooks/useAuth';
 import { useQuery } from '@tanstack/react-query';
+import { get } from '../api/client';
 
 const navItems = [
   { to: '/', label: 'Dashboard' },
@@ -11,9 +12,7 @@ const navItems = [
 ];
 
 async function getVersion(): Promise<string> {
-  const res = await fetch('/api/version');
-  if (!res.ok) throw new Error('Failed to fetch version');
-  const data = await res.json();
+  const data = await get<{ version: string }>('/api/version');
   return data.version;
 }
 
