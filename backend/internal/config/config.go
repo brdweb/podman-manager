@@ -25,10 +25,57 @@ type ServerConfig struct {
 }
 
 type SSHConfig struct {
-	KeyPath               string        `yaml:"key_path"`
-	ConnectTimeout        time.Duration `yaml:"connect_timeout"`
-	KeepaliveInterval     time.Duration `yaml:"keepalive_interval"`
-	StrictHostKeyChecking string        `yaml:"ssh_strict_host_key_checking"`
+	KeyPath                     string        `yaml:"key_path"`
+	ConnectTimeout              time.Duration `yaml:"connect_timeout"`
+	KeepaliveInterval           time.Duration `yaml:"keepalive_interval"`
+	StrictHostKeyChecking       string        `yaml:"strict_host_key_checking,omitempty"`
+	LegacyStrictHostKeyChecking string        `yaml:"-"`
+}
+
+func (s *SSHConfig) UnmarshalYAML(value *yaml.Node) error {
+	type sshConfigYAML struct {
+		KeyPath                     string        `yaml:"key_path"`
+		ConnectTimeout              time.Duration `yaml:"connect_timeout"`
+		KeepaliveInterval           time.Duration `yaml:"keepalive_interval"`
+		StrictHostKeyChecking       string        `yaml:"strict_host_key_checking"`
+		LegacyStrictHostKeyChecking string        `yaml:"ssh_strict_host_key_checking"`
+	}
+
+	decoded := sshConfigYAML{
+		KeyPath:               s.KeyPath,
+		ConnectTimeout:        s.ConnectTimeout,
+		KeepaliveInterval:     s.KeepaliveInterval,
+		StrictHostKeyChecking: s.StrictHostKeyChecking,
+	}
+
+	if err := value.Decode(&decoded); err != nil {
+		return err
+	}
+	if decoded.LegacyStrictHostKeyChecking != "" && !yamlMappingHasKey(value, "strict_host_key_checking") {
+		decoded.StrictHostKeyChecking = ""
+	}
+
+	s.KeyPath = decoded.KeyPath
+	s.ConnectTimeout = decoded.ConnectTimeout
+	s.KeepaliveInterval = decoded.KeepaliveInterval
+	s.StrictHostKeyChecking = decoded.StrictHostKeyChecking
+	s.LegacyStrictHostKeyChecking = decoded.LegacyStrictHostKeyChecking
+
+	return nil
+}
+
+func yamlMappingHasKey(value *yaml.Node, key string) bool {
+	if value == nil || value.Kind != yaml.MappingNode {
+		return false
+	}
+
+	for i := 0; i+1 < len(value.Content); i += 2 {
+		if value.Content[i].Value == key {
+			return true
+		}
+	}
+
+	return false
 }
 
 type HostConfig struct {
@@ -157,14 +204,18 @@ func (c *Config) Validate() error {
 
 	hostKeyMode := strings.ToLower(strings.TrimSpace(c.SSH.StrictHostKeyChecking))
 	if hostKeyMode == "" {
+		hostKeyMode = strings.ToLower(strings.TrimSpace(c.SSH.LegacyStrictHostKeyChecking))
+	}
+	if hostKeyMode == "" {
 		hostKeyMode = "accept-new"
 	}
 
 	switch hostKeyMode {
 	case "strict", "accept-new", "off":
 		c.SSH.StrictHostKeyChecking = hostKeyMode
+		c.SSH.LegacyStrictHostKeyChecking = ""
 	default:
-		return fmt.Errorf("ssh.ssh_strict_host_key_checking must be 'strict', 'accept-new', or 'off', got '%s'", c.SSH.StrictHostKeyChecking)
+		return fmt.Errorf("ssh.strict_host_key_checking must be 'strict', 'accept-new', or 'off', got '%s'", c.SSH.StrictHostKeyChecking)
 	}
 
 	if c.Auth.SessionTTL <= 0 {

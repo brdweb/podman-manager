@@ -14,6 +14,11 @@ ssh:
   connect_timeout: "5s"
   # Keepalive interval to prevent SSH drops
   keepalive_interval: "30s"
+  # Host key verification: strict, accept-new, or off
+  strict_host_key_checking: "accept-new"
+
+# Snapshot cache TTL (reduces SSH polling)
+cache_ttl: "3s"
 
 # Optional login for the standalone web application.
 # Generate password_hash with:
