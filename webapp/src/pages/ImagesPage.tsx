@@ -10,6 +10,13 @@ export function ImagesPage() {
   const [isPullModalOpen, setIsPullModalOpen] = useState(false);
   const [pullImageRef, setPullImageRef] = useState('');
   const [pullHost, setPullHost] = useState('');
+  const [notice, setNotice] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [pullError, setPullError] = useState<string | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<{ host: string; id: string; label: string } | null>(null);
+  const [forceRemove, setForceRemove] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
+  const [isPruneDialogOpen, setIsPruneDialogOpen] = useState(false);
+  const [pruneError, setPruneError] = useState<string | null>(null);
 
   const hosts = overview?.hosts.map((h) => h.name) || [];
 
@@ -30,44 +37,50 @@ export function ImagesPage() {
   const handlePull = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!pullHost || !pullImageRef) return;
+    setNotice(null);
+    setPullError(null);
     try {
       await pull.mutateAsync({ host: pullHost, imageRef: pullImageRef });
       setIsPullModalOpen(false);
       setPullImageRef('');
+      setNotice({ type: 'success', message: `Pull started for ${pullImageRef} on ${pullHost}.` });
     } catch (err) {
-      console.error('Failed to pull image', err);
-      alert('Failed to pull image. See console for details.');
+      setPullError(err instanceof Error ? err.message : 'Failed to pull image.');
     }
   };
 
-  const handleRemove = async (host: string, id: string) => {
-    if (confirm('Are you sure you want to remove this image?')) {
-      try {
-        await remove.mutateAsync({ host, id });
-      } catch (err) {
-        console.error('Failed to remove image', err);
-        if (confirm('Failed to remove image. It might be in use. Force remove?')) {
-          try {
-            await remove.mutateAsync({ host, id, force: true });
-          } catch (forceErr) {
-            console.error('Failed to force remove image', forceErr);
-            alert('Failed to force remove image.');
-          }
-        }
-      }
+  const handleRemove = async () => {
+    if (!removeTarget) return;
+    setNotice(null);
+    setRemoveError(null);
+    try {
+      await remove.mutateAsync({ host: removeTarget.host, id: removeTarget.id, force: forceRemove });
+      setNotice({ type: 'success', message: `Removed image ${removeTarget.label}.` });
+      setRemoveTarget(null);
+      setForceRemove(false);
+    } catch (err) {
+      setRemoveError(err instanceof Error ? err.message : 'Failed to remove image.');
     }
   };
 
   const handlePrune = async () => {
-    if (confirm('Are you sure you want to prune unused images on all hosts?')) {
-      for (const host of hosts) {
-        try {
-          await prune.mutateAsync({ host });
-        } catch (err) {
-          console.error(`Failed to prune images on ${host}`, err);
-        }
+    setNotice(null);
+    setPruneError(null);
+    const failures: string[] = [];
+    for (const host of hosts) {
+      try {
+        await prune.mutateAsync({ host });
+      } catch (err) {
+        failures.push(`${host}: ${err instanceof Error ? err.message : 'failed'}`);
       }
     }
+    if (failures.length > 0) {
+      setPruneError(`Prune completed with errors: ${failures.join('; ')}`);
+      return;
+    }
+
+    setIsPruneDialogOpen(false);
+    setNotice({ type: 'success', message: 'Pruned unused images on all configured hosts.' });
   };
 
   return (
@@ -102,7 +115,7 @@ export function ImagesPage() {
             </button>
             <button
               type="button"
-              onClick={handlePrune}
+              onClick={() => setIsPruneDialogOpen(true)}
               disabled={prune.isPending}
               className="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-2.5 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800 disabled:opacity-50"
             >
@@ -111,6 +124,18 @@ export function ImagesPage() {
           </div>
         </div>
       </div>
+
+      {notice && (
+        <div
+          className={`mb-6 rounded-xl border p-4 text-sm ${
+            notice.type === 'success'
+              ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+              : 'border-red-500/30 bg-red-500/10 text-red-300'
+          }`}
+        >
+          {notice.message}
+        </div>
+      )}
 
       {isLoading && (
         <div className="animate-pulse space-y-3">
@@ -175,7 +200,14 @@ export function ImagesPage() {
                       <td className="px-4 py-3 text-right">
                         <button
                           type="button"
-                          onClick={() => handleRemove(image.host!, image.id)}
+                          onClick={() => {
+                            setForceRemove(false);
+                            setRemoveTarget({
+                              host: image.host!,
+                              id: image.id,
+                              label: `${image.repository}:${image.tag}`,
+                            });
+                          }}
                           disabled={remove.isPending}
                           className="rounded-md px-2 py-1 text-xs font-medium text-red-400 transition-colors hover:bg-red-400/10 disabled:opacity-50"
                         >
@@ -235,6 +267,12 @@ export function ImagesPage() {
                 />
               </div>
 
+              {pullError && (
+                <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
+                  {pullError}
+                </div>
+              )}
+
               <div className="mt-6 flex justify-end gap-3">
                 <button
                   type="button"
@@ -252,6 +290,84 @@ export function ImagesPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {removeTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-950 p-6 shadow-2xl">
+            <h2 className="text-xl font-bold text-zinc-100">Remove Image</h2>
+            <p className="mt-2 text-sm text-zinc-400">
+              Remove <span className="font-mono text-zinc-200">{removeTarget.label}</span> from{' '}
+              <span className="font-mono text-zinc-200">{removeTarget.host}</span>?
+            </p>
+            <label className="mt-4 flex cursor-pointer items-center gap-2 text-sm text-zinc-300">
+              <input
+                type="checkbox"
+                checked={forceRemove}
+                onChange={(event) => setForceRemove(event.target.checked)}
+                className="h-4 w-4 rounded border-zinc-700 bg-zinc-950 text-red-500"
+              />
+              Force remove if the image is in use
+            </label>
+            {removeError && (
+              <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
+                {removeError}
+              </div>
+            )}
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setRemoveTarget(null)}
+                disabled={remove.isPending}
+                className="rounded-xl px-4 py-2.5 text-sm font-medium text-zinc-400 transition-colors hover:text-zinc-200 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleRemove()}
+                disabled={remove.isPending}
+                className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-red-500 disabled:opacity-50"
+              >
+                {remove.isPending ? 'Removing...' : 'Remove'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isPruneDialogOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-950 p-6 shadow-2xl">
+            <h2 className="text-xl font-bold text-zinc-100">Prune Unused Images</h2>
+            <p className="mt-2 text-sm text-zinc-400">
+              Prune unused images on all configured hosts? This may remove images that are not currently referenced by containers.
+            </p>
+            {pruneError && (
+              <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
+                {pruneError}
+              </div>
+            )}
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setIsPruneDialogOpen(false)}
+                disabled={prune.isPending}
+                className="rounded-xl px-4 py-2.5 text-sm font-medium text-zinc-400 transition-colors hover:text-zinc-200 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handlePrune()}
+                disabled={prune.isPending}
+                className="rounded-xl bg-zinc-100 px-4 py-2.5 text-sm font-medium text-zinc-900 transition-colors hover:bg-white disabled:opacity-50"
+              >
+                {prune.isPending ? 'Pruning...' : 'Prune'}
+              </button>
+            </div>
           </div>
         </div>
       )}
