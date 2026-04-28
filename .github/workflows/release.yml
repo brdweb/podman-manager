@@ -16,7 +16,7 @@ permissions:
   packages: write
 
 env:
-  VERSION: ${{ github.event.inputs.version || github.ref_name }}
+  RAW_VERSION: ${{ github.event.inputs.version || github.ref_name }}
 
 jobs:
   build-and-release:
@@ -26,10 +26,16 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
+      - name: Normalize release version
+        run: |
+          VERSION="${RAW_VERSION#v}"
+          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+          echo "RELEASE_TAG=v${VERSION}" >> "$GITHUB_ENV"
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.26.2'
 
       - name: Build backend binary
         run: |
@@ -86,7 +92,7 @@ jobs:
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ env.VERSION }}
+          tag_name: ${{ env.RELEASE_TAG }}
           name: ${{ env.VERSION }}
           body: |
             ## Podman Manager ${{ env.VERSION }}
