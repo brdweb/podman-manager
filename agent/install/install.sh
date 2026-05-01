@@ -141,7 +141,7 @@ Requires=podman.service
 [Container]
 Image=ghcr.io/brdweb/podman-manager/agent:latest
 ContainerName=podman-manager-agent
-Volume=podman-manager-agent-config:/etc/podman-agent
+Volume=/etc/podman-agent:/etc/podman-agent:Z
 Volume=/run/podman/podman.sock:/run/podman/podman.sock
 Volume=/etc/containers/systemd:/etc/containers/systemd:ro
 Volume=/proc:/host/proc:ro
@@ -153,11 +153,12 @@ Environment=AGENT_TOKEN=__TOKEN__
 Environment=AGENT_TLS=false
 Environment=AGENT_LOG_LEVEL=info
 Environment=AGENT_LOG_FORMAT=json
+
+[Service]
 Restart=always
-ReadOnlyRootFilesystem=true
 
 [Install]
-WantedBy=default.target
+WantedBy=multi-user.target
 EOF
 }
 
@@ -170,7 +171,7 @@ After=podman.service
 [Container]
 Image=ghcr.io/brdweb/podman-manager/agent:latest
 ContainerName=podman-manager-agent
-Volume=podman-manager-agent-config:/etc/podman-agent
+Volume=$HOME/.config/podman-agent:/etc/podman-agent:Z
 Volume=%t/podman/podman.sock:/run/podman/podman.sock
 Volume=$HOME/.config/containers/systemd:/etc/containers/systemd:ro
 Volume=/proc:/host/proc:ro
@@ -180,8 +181,9 @@ Environment=AGENT_TOKEN=__TOKEN__
 Environment=AGENT_TLS=false
 Environment=AGENT_LOG_LEVEL=info
 Environment=AGENT_LOG_FORMAT=json
+
+[Service]
 Restart=always
-ReadOnlyRootFilesystem=true
 
 [Install]
 WantedBy=default.target
@@ -286,16 +288,25 @@ confirm_update() {
 write_quadlet() {
   local quadlet_dir="$1"
   local quadlet_path="$2"
+  local agent_config_dir
   local tmp_file
 
   confirm_update "$quadlet_path"
 
   info "Writing Quadlet file to $quadlet_path"
+  if [[ "$ROOTLESS" == true ]]; then
+    agent_config_dir="$HOME/.config/podman-agent"
+  else
+    agent_config_dir="/etc/podman-agent"
+  fi
+
   if [[ "$DRY_RUN" == true ]]; then
     if [[ "$ROOTLESS" == true ]]; then
       run_cmd install -d -m 0755 "$quadlet_dir"
+      run_cmd install -d -m 0700 "$agent_config_dir"
     else
       run_rootful install -d -m 0755 "$quadlet_dir"
+      run_rootful install -d -m 0700 "$agent_config_dir"
     fi
     printf '%s\n' '--- rendered Quadlet (token redacted) ---'
     redacted_quadlet
@@ -305,6 +316,7 @@ write_quadlet() {
 
   if [[ "$ROOTLESS" == true ]]; then
     install -d -m 0755 "$quadlet_dir"
+    install -d -m 0700 "$agent_config_dir"
     tmp_file="$(mktemp)"
     render_quadlet > "$tmp_file"
     install -m 0600 "$tmp_file" "$quadlet_path"
@@ -313,6 +325,7 @@ write_quadlet() {
     tmp_file="$(mktemp)"
     render_quadlet > "$tmp_file"
     run_rootful install -d -m 0755 "$quadlet_dir"
+    run_rootful install -d -m 0700 "$agent_config_dir"
     run_rootful install -m 0600 "$tmp_file" "$quadlet_path"
     rm -f "$tmp_file"
   fi
