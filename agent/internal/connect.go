@@ -25,6 +25,7 @@ import (
 	"github.com/brdweb/podman-manager/agent/internal/config"
 	"github.com/brdweb/podman-manager/agent/internal/podman"
 	agentpb "github.com/brdweb/podman-manager/agent/proto"
+	"google.golang.org/grpc/metadata"
 )
 
 // Manager manages the connection to the Podman Manager.
@@ -67,6 +68,46 @@ func NewManager(cfg *config.Config, podmanClient *podman.Client, logger *slog.Lo
 		eventStreams:    make(map[string]context.CancelFunc),
 		reconnectCh:     make(chan struct{}, 1),
 	}
+}
+
+// EnsureEnrolled exchanges a one-time enrollment token for persistent agent
+// credentials when this agent has not been enrolled yet.
+func (m *Manager) EnsureEnrolled(ctx context.Context, agentVersion string) (bool, error) {
+	if strings.TrimSpace(m.cfg.Agent.ID) != "" && strings.TrimSpace(m.cfg.Agent.Credential) != "" {
+		return false, nil
+	}
+	if strings.TrimSpace(m.cfg.Agent.Token) == "" {
+		return false, fmt.Errorf("agent is not enrolled and no enrollment token is configured")
+	}
+
+	conn, err := m.dial(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer conn.Close()
+
+	hostname, err := os.Hostname()
+	if err != nil || strings.TrimSpace(hostname) == "" {
+		hostname = "unknown"
+	}
+
+	client := agentpb.NewAgentServiceClient(conn)
+	resp, err := client.Enroll(ctx, &agentpb.EnrollRequest{
+		Token:        strings.TrimSpace(m.cfg.Agent.Token),
+		HostId:       hostname,
+		AgentVersion: agentVersion,
+	})
+	if err != nil {
+		return false, fmt.Errorf("enrolling agent: %w", err)
+	}
+	if resp == nil || !resp.Success || strings.TrimSpace(resp.AgentId) == "" || strings.TrimSpace(resp.Credential) == "" {
+		return false, fmt.Errorf("manager returned incomplete enrollment response")
+	}
+
+	m.cfg.Agent.ID = strings.TrimSpace(resp.AgentId)
+	m.cfg.Agent.Credential = strings.TrimSpace(resp.Credential)
+	m.cfg.Agent.Token = ""
+	return true, nil
 }
 
 func (m *Manager) listContainers(ctx context.Context, all bool) ([]*agentpb.Container, error) {
@@ -320,6 +361,16 @@ func (m *Manager) startStream(ctx context.Context) (agentpb.AgentService_Connect
 	}
 
 	client := agentpb.NewAgentServiceClient(conn)
+	hostname, err := os.Hostname()
+	if err != nil || strings.TrimSpace(hostname) == "" {
+		hostname = "unknown"
+	}
+	ctx = metadata.AppendToOutgoingContext(
+		ctx,
+		"agent-id", strings.TrimSpace(m.cfg.Agent.ID),
+		"agent-credential", strings.TrimSpace(m.cfg.Agent.Credential),
+		"agent-hostname", hostname,
+	)
 	stream, err := client.Connect(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("starting manager stream: %w", err)

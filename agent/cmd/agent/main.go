@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -10,7 +11,9 @@ import (
 	"strings"
 	"syscall"
 
+	connect "github.com/brdweb/podman-manager/agent/internal"
 	"github.com/brdweb/podman-manager/agent/internal/config"
+	"github.com/brdweb/podman-manager/agent/internal/podman"
 )
 
 var version = "2026.05.01"
@@ -53,22 +56,35 @@ func main() {
 	defer stop()
 
 	logger.Info("Agent starting", "version", version, "manager_address", cfg.Manager.Address)
-	if err := run(ctx, logger); err != nil {
+	if err := run(ctx, *configPath, cfg, logger); err != nil {
 		logger.Error("agent stopped with error", "error", err)
 		os.Exit(1)
 	}
 	logger.Info("agent stopped")
 }
 
-func run(ctx context.Context, logger *slog.Logger) error {
-	select {
-	case <-ctx.Done():
-		logger.Info("received signal, shutting down")
-		return nil
-	default:
-		logger.Info("agent lifecycle not yet implemented")
-		return nil
+func run(ctx context.Context, configPath string, cfg *config.Config, logger *slog.Logger) error {
+	podmanClient, err := podman.NewClient(cfg.Podman.SocketPath, cfg.Podman.Timeout)
+	if err != nil {
+		return err
 	}
+
+	manager := connect.NewManager(cfg, podmanClient, logger)
+	enrolled, err := manager.EnsureEnrolled(ctx, version)
+	if err != nil {
+		return err
+	}
+	if enrolled {
+		if err := config.Save(configPath, cfg); err != nil {
+			return err
+		}
+		logger.Info("agent enrolled", "agent_id", cfg.Agent.ID)
+	}
+
+	if err := manager.Connect(ctx); err != nil && !errors.Is(err, context.Canceled) {
+		return err
+	}
+	return nil
 }
 
 func newLogger(cfg config.LogConfig) *slog.Logger {

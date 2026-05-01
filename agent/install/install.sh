@@ -141,6 +141,7 @@ Requires=podman.service
 [Container]
 Image=ghcr.io/brdweb/podman-manager/agent:latest
 ContainerName=podman-manager-agent
+Volume=podman-manager-agent-config:/etc/podman-agent
 Volume=/run/podman/podman.sock:/run/podman/podman.sock
 Volume=/etc/containers/systemd:/etc/containers/systemd:ro
 Volume=/proc:/host/proc:ro
@@ -149,6 +150,7 @@ Volume=/dev:/host/dev:ro
 Volume=/etc/os-release:/host/etc/os-release:ro
 Environment=AGENT_MANAGER_URL=__MANAGER_URL__
 Environment=AGENT_TOKEN=__TOKEN__
+Environment=AGENT_TLS=false
 Environment=AGENT_LOG_LEVEL=info
 Environment=AGENT_LOG_FORMAT=json
 Restart=always
@@ -168,12 +170,14 @@ After=podman.service
 [Container]
 Image=ghcr.io/brdweb/podman-manager/agent:latest
 ContainerName=podman-manager-agent
+Volume=podman-manager-agent-config:/etc/podman-agent
 Volume=%t/podman/podman.sock:/run/podman/podman.sock
 Volume=$HOME/.config/containers/systemd:/etc/containers/systemd:ro
 Volume=/proc:/host/proc:ro
 Volume=/sys:/host/sys:ro
 Environment=AGENT_MANAGER_URL=__MANAGER_URL__
 Environment=AGENT_TOKEN=__TOKEN__
+Environment=AGENT_TLS=false
 Environment=AGENT_LOG_LEVEL=info
 Environment=AGENT_LOG_FORMAT=json
 Restart=always

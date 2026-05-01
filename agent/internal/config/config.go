@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -53,10 +54,71 @@ type LogConfig struct {
 
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
-	if err != nil {
+	if err != nil && !os.IsNotExist(err) {
 		return nil, fmt.Errorf("reading config file %s: %w", path, err)
 	}
 
+	cfg := defaultConfig()
+	if err == nil && len(data) > 0 {
+		if err := yaml.Unmarshal(data, cfg); err != nil {
+			return nil, fmt.Errorf("parsing config file: %w", err)
+		}
+	}
+
+	applyEnv(cfg)
+
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid config: %w", err)
+	}
+
+	return cfg, nil
+}
+
+func Save(path string, cfg *Config) error {
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("marshaling config: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return fmt.Errorf("creating config directory: %w", err)
+	}
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		return fmt.Errorf("writing config file %s: %w", path, err)
+	}
+	return nil
+}
+
+func applyEnv(cfg *Config) {
+	if value := strings.TrimSpace(os.Getenv("AGENT_MANAGER_URL")); value != "" {
+		cfg.Manager.Address = value
+	}
+	if value := strings.TrimSpace(os.Getenv("AGENT_TOKEN")); value != "" {
+		cfg.Agent.Token = value
+	}
+	if value := strings.TrimSpace(os.Getenv("AGENT_ID")); value != "" {
+		cfg.Agent.ID = value
+	}
+	if value := strings.TrimSpace(os.Getenv("AGENT_CREDENTIAL")); value != "" {
+		cfg.Agent.Credential = value
+	}
+	if value := strings.TrimSpace(os.Getenv("AGENT_PODMAN_SOCKET")); value != "" {
+		cfg.Podman.SocketPath = value
+	}
+	if value := strings.TrimSpace(os.Getenv("AGENT_LOG_LEVEL")); value != "" {
+		cfg.Log.Level = value
+	}
+	if value := strings.TrimSpace(os.Getenv("AGENT_LOG_FORMAT")); value != "" {
+		cfg.Log.Format = value
+	}
+	if value := strings.TrimSpace(os.Getenv("AGENT_TLS")); value != "" {
+		cfg.Manager.TLS = strings.EqualFold(value, "true") || value == "1"
+	}
+	if value := strings.TrimSpace(os.Getenv("AGENT_TLS_INSECURE")); value != "" {
+		cfg.Manager.TLSInsecure = strings.EqualFold(value, "true") || value == "1"
+	}
+}
+
+func LoadBytes(data []byte) (*Config, error) {
 	cfg := defaultConfig()
 	if err := yaml.Unmarshal(data, cfg); err != nil {
 		return nil, fmt.Errorf("parsing config file: %w", err)
