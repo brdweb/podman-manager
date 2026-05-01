@@ -43,6 +43,8 @@ jobs:
           file: ./webapp/Dockerfile
           platforms: linux/amd64
           push: true
+          build-args: |
+            VERSION=${{ github.sha }}
           tags: |
             ghcr.io/brdweb/podman-manager:latest
             ghcr.io/brdweb/podman-manager:${{ github.sha }}
@@ -54,6 +56,8 @@ jobs:
           file: ./agent/Dockerfile
           platforms: linux/amd64
           push: true
+          build-args: |
+            VERSION=${{ github.sha }}
           tags: |
             ghcr.io/brdweb/podman-manager/agent:latest
             ghcr.io/brdweb/podman-manager/agent:${{ github.sha }}
