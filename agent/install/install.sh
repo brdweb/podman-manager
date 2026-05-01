@@ -336,7 +336,6 @@ reload_and_start() {
 
   if [[ "$ROOTLESS" == true ]]; then
     systemctl_user daemon-reload
-    systemctl_user enable "$SERVICE_NAME"
     if [[ "$DRY_RUN" == true ]]; then
       systemctl_user start "$SERVICE_NAME"
       return 0
@@ -348,7 +347,6 @@ reload_and_start() {
     fi
   else
     systemctl_rootful daemon-reload
-    systemctl_rootful enable "$SERVICE_NAME"
     if [[ "$DRY_RUN" == true ]]; then
       systemctl_rootful start "$SERVICE_NAME"
       return 0
