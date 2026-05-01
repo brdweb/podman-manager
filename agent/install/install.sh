@@ -171,9 +171,9 @@ After=podman.service
 [Container]
 Image=ghcr.io/brdweb/podman-manager/agent:latest
 ContainerName=podman-manager-agent
-Volume=$HOME/.config/podman-agent:/etc/podman-agent:Z
+Volume=__HOME__/.config/podman-agent:/etc/podman-agent:Z
 Volume=%t/podman/podman.sock:/run/podman/podman.sock
-Volume=$HOME/.config/containers/systemd:/etc/containers/systemd:ro
+Volume=__HOME__/.config/containers/systemd:/etc/containers/systemd:ro
 Volume=/proc:/host/proc:ro
 Volume=/sys:/host/sys:ro
 Environment=AGENT_MANAGER_URL=__MANAGER_URL__
@@ -201,6 +201,7 @@ render_quadlet() {
 
   template="${template//__MANAGER_URL__/$MANAGER_URL}"
   template="${template//__TOKEN__/$TOKEN}"
+  template="${template//__HOME__/$HOME}"
   template="${template//__IMAGE__/$IMAGE}"
   template="${template//Image=$DEFAULT_IMAGE/Image=$IMAGE}"
   printf '%s\n' "$template"

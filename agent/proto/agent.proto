@@ -44,6 +44,18 @@ message AgentMessage {
     HostInfoRequest host_info_request = 24;
     EventStreamSubscribe event_stream_subscribe = 25;
     EventStreamUnsubscribe event_stream_unsubscribe = 26;
+    ContainerListResponse container_list_response = 27;
+    VolumeListResponse volume_list_response = 28;
+    VolumeActionResponse volume_action_response = 29;
+    VolumePruneResponse volume_prune_response = 30;
+    NetworkListResponse network_list_response = 31;
+    NetworkActionResponse network_action_response = 32;
+    NetworkPruneResponse network_prune_response = 33;
+    ContainerLogsChunk container_logs_chunk = 34;
+    ContainerLogsError container_logs_error = 35;
+    EventStreamData event_stream_data = 36;
+    EventStreamError event_stream_error = 37;
+    ErrorResponse error_response = 38;
   }
 }
 

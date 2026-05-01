@@ -3,7 +3,7 @@ WORKDIR /src
 COPY agent/go.mod agent/go.sum ./
 RUN go mod download
 COPY agent/ ./
-COPY backend/agent/proto/agent.pb.go ./proto/agent.pb.go
+COPY backend/agent/proto/*.pb.go ./proto/
 ARG VERSION=dev
 RUN CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=${VERSION}" -o /out/podman-agent ./cmd/agent
 
