@@ -122,14 +122,16 @@ func (s *Server) Enroll(ctx context.Context, req *agentpb.EnrollRequest) (*agent
 	}
 
 	now := time.Now()
-	s.enrollStore.RegisterCredential(&enroll.AgentCredential{
+	if err := s.enrollStore.RegisterCredential(&enroll.AgentCredential{
 		AgentID:    agentID,
 		Hostname:   strings.TrimSpace(req.HostId),
 		Credential: credential,
 		CreatedAt:  now,
 		LastSeen:   now,
 		Active:     true,
-	})
+	}); err != nil {
+		return nil, status.Errorf(codes.Internal, "storing agent credential: %v", err)
+	}
 
 	s.credentialsMu.Lock()
 	s.credentials[agentID] = credential

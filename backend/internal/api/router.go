@@ -63,7 +63,11 @@ func NewServer(configPath string, cfg *config.Config, logger *slog.Logger, versi
 	}
 
 	grpcAddress := ":18735"
-	enrollStore := enroll.NewStore(time.Hour)
+	enrollStore, err := enroll.NewPersistentStore(time.Hour, enrollCredentialsPath(configPath, cfg))
+	if err != nil {
+		authStore.Close()
+		return nil, err
+	}
 	enrollHandler := enroll.NewHandler(enrollStore)
 	registry := agent.NewRegistry(logger)
 	agentServer := agent.NewServer(registry, logger, enrollStore)
@@ -126,6 +130,16 @@ func authDBPath(configPath string, cfg *config.Config) string {
 		return filepath.Join(filepath.Dir(configPath), "auth.db")
 	}
 	return "/etc/podman-manager/auth.db"
+}
+
+func enrollCredentialsPath(configPath string, cfg *config.Config) string {
+	if cfg.Server.AuthDBPath != "" {
+		return filepath.Join(filepath.Dir(config.ExpandPath(cfg.Server.AuthDBPath)), "agent-credentials.json")
+	}
+	if configPath != "" {
+		return filepath.Join(filepath.Dir(configPath), "agent-credentials.json")
+	}
+	return "/etc/podman-manager/agent-credentials.json"
 }
 
 func seedConfigAuthUser(ctx context.Context, store *auth.Store, cfg *config.Config) error {
