@@ -126,20 +126,18 @@ func authDBPath(configPath string, cfg *config.Config) string {
 	if cfg.Server.AuthDBPath != "" {
 		return config.ExpandPath(cfg.Server.AuthDBPath)
 	}
+	normalizedConfigPath := strings.ReplaceAll(filepath.Clean(configPath), "\\", "/")
+	if configPath == "" || normalizedConfigPath == "/etc/podman-manager/config.yaml" {
+		return "/var/lib/podman-manager/auth.db"
+	}
 	if configPath != "" {
 		return filepath.Join(filepath.Dir(configPath), "auth.db")
 	}
-	return "/etc/podman-manager/auth.db"
+	return "/var/lib/podman-manager/auth.db"
 }
 
 func enrollCredentialsPath(configPath string, cfg *config.Config) string {
-	if cfg.Server.AuthDBPath != "" {
-		return filepath.Join(filepath.Dir(config.ExpandPath(cfg.Server.AuthDBPath)), "agent-credentials.json")
-	}
-	if configPath != "" {
-		return filepath.Join(filepath.Dir(configPath), "agent-credentials.json")
-	}
-	return "/etc/podman-manager/agent-credentials.json"
+	return filepath.Join(filepath.Dir(authDBPath(configPath, cfg)), "agent-credentials.json")
 }
 
 func seedConfigAuthUser(ctx context.Context, store *auth.Store, cfg *config.Config) error {

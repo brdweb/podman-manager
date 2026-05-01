@@ -20,7 +20,7 @@ COPY webapp/start-container.sh /usr/local/bin/start-podman-manager
 COPY --from=frontend-build /src/webapp/dist /usr/share/nginx/html
 COPY --from=backend-build /out/podman-manager /usr/local/bin/podman-manager
 RUN chmod +x /usr/local/bin/start-podman-manager \
-    && mkdir -p /etc/podman-manager /run/nginx /var/lib/nginx/tmp /tmp/nginx/client-body
+    && mkdir -p /etc/podman-manager /var/lib/podman-manager /run/nginx /var/lib/nginx/tmp /tmp/nginx/client-body
 ENV PODMAN_MANAGER_CONFIG=/etc/podman-manager/config.yaml
 EXPOSE 80 18735
 ENTRYPOINT ["/usr/local/bin/start-podman-manager"]
