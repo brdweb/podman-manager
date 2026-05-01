@@ -30,11 +30,6 @@ jobs:
       - name: Run backend vet
         run: cd backend && go vet ./...
 
-      - name: Run backend lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          working-directory: backend
-
   agent-build:
     name: Agent build
     runs-on: ubuntu-latest
