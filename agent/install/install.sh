@@ -140,6 +140,7 @@ Requires=podman.service
 
 [Container]
 Image=ghcr.io/brdweb/podman-manager/agent:latest
+Pull=newer
 ContainerName=podman-manager-agent
 Volume=/etc/podman-agent:/etc/podman-agent:Z
 Volume=/run/podman/podman.sock:/run/podman/podman.sock
@@ -170,6 +171,7 @@ After=podman.service
 
 [Container]
 Image=ghcr.io/brdweb/podman-manager/agent:latest
+Pull=newer
 ContainerName=podman-manager-agent
 Volume=__HOME__/.config/podman-agent:/etc/podman-agent:Z
 Volume=%t/podman/podman.sock:/run/podman/podman.sock
