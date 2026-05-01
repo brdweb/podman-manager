@@ -2,24 +2,41 @@
 
 # Podman Manager
 
-Multi-host Podman container management for Unraid and standalone deployment
+Multi-host Podman container management with agent-based architecture
 
-Podman Manager provides a unified dashboard to monitor and control Podman containers across multiple remote hosts. It connects to each host via SSH and executes Podman commands, exposing the results through a REST API consumed by either the native Unraid plugin or the standalone web application.
+Podman Manager provides a unified dashboard to monitor and control Podman containers across multiple remote hosts. It uses a lightweight containerized agent installed on each managed host, communicating via gRPC bidirectional streaming for real-time operations, multi-user RBAC, and persistent authentication.
 
 ## Features
 
-### Core Features
+### Agent-Based Architecture
+- **Containerized agent** — lightweight Podman container installed via Quadlet, zero host dependencies
+- **gRPC bidirectional streaming** — real-time commands, logs, and events over persistent connections
+- **Reverse connections** — agents connect outbound to the manager, no inbound firewall rules needed
+- **Auto-reconnect** — exponential backoff with heartbeat monitoring
+- **Token-based enrollment** — secure one-time tokens for agent registration
+- **Rootful and rootless** — auto-detects Podman socket, supports both modes
+
+### Multi-User RBAC
+- **SQLite-backed auth** — persistent user accounts and sessions survive restarts
+- **Three roles** — admin (full access), operator (manage containers), viewer (read-only)
+- **Per-endpoint enforcement** — every API route protected by role middleware
+- **User management UI** — create users, assign roles, reset passwords from the web interface
+
+### Container Management
 - **Multi-host dashboard** — manage containers across unlimited remote Podman hosts
-- **Full container lifecycle** — start, stop, restart, and remove containers from the UI
-- **Management method detection** — automatically identifies Quadlet (systemd), Docker Compose, and standalone containers with visual badges
-- **Quadlet (systemd) support** — proper systemctl-based lifecycle management for Quadlet containers
-- **Compose support** — identifies Docker Compose-managed containers
-- **Inline container details** — click anywhere in a container row to expand details (IPs, ports, volumes, networks)
-- **Container logs** — view logs directly from the UI with real-time streaming
+- **Full container lifecycle** — create, start, stop, restart, and remove containers from the UI
+- **Multi-step creation wizard** — configure image, networking, storage, and advanced options
+- **Management method detection** — identifies Quadlet (systemd), Docker Compose, and standalone containers
+- **Quadlet (systemd) support** — proper lifecycle management for Quadlet containers
+- **Inline container details** — expand rows for IPs, ports, volumes, networks
+- **Container logs** — real-time streaming log viewer with pause/resume and auto-scroll
 - **Bulk actions** — checkbox selection with bulk start/stop/restart
-- **Sortable columns** — click Container or Host column headers to sort
-- **Rootful and rootless Podman** — supports both modes per-host
-- **SSH-based** — no agents to install on remote hosts, just SSH key access
+- **Sortable columns** — click headers to sort by container name or host
+
+### Volume & Network Management
+- **Volume management** — list, create, and delete volumes on any host
+- **Network management** — list, create, and delete networks with subnet configuration
+- **Host-scoped UI** — each host has its own volumes and networks pages
 
 ### Image Management
 - **List images** — view all images across all hosts with size and tag information
@@ -27,60 +44,55 @@ Podman Manager provides a unified dashboard to monitor and control Podman contai
 - **Remove images** — delete images with force option for in-use images
 - **Prune images** — clean up dangling/unused images across all hosts
 
-### Real-time Updates
-- **Event streaming** — WebSocket-based real-time container events
-- **Log streaming** — Live log viewer with pause/resume and auto-scroll
-- **Snapshot caching** — Reduced SSH polling with configurable TTL (default 3s)
+### Real-Time Events
+- **Live event dashboard** — WebSocket-streamed Podman events across all hosts
+- **Filter by type and host** — container, image, volume, network events
+- **Pause/resume** — control the event stream without disconnecting
+- **Auto-reconnect** — resilient connection with exponential backoff
 
-### Security
-- **SSH host key verification** — Configurable strictness (strict/accept-new/off)
-- **Local authentication** — Optional username/password protection for the web UI
-- **Session management** — Secure session-based authentication
-
-### Configuration
-- **In-browser config editor** — edit config.yaml with syntax highlighting (ace editor)
+### Configuration & UX
+- **CodeMirror YAML editor** — syntax-highlighted config editing in the browser
+- **Toast notifications** — success/error/info notifications for all actions
+- **Error boundaries** — graceful error handling with reload capability
+- **404 page** — friendly "not found" page for unknown routes
 - **Hot reload** — configuration changes apply without restart
+
+### CI/CD
+- **GitHub Actions** — automated testing, linting, and building on every push/PR
+- **Multi-binary releases** — both manager and agent binaries published with GitHub releases
+- **Multi-arch Docker** — container images built for multiple architectures
 
 ## Architecture
 
 ```
-                    ┌─────────────────────────────────────┐
-                    │         Go REST API Backend          │
-                    │         (localhost:18734)             │
-                    ├──────────┬──────────┬────────────────┤
-                    │  SSH     │  SSH     │  SSH           │
-                    ▼          ▼          ▼                │
-              host-alpha    host-beta    host-gamma        │
-              (rootful)     (rootful)    (rootless)        │
-                    └─────────────────────────────────────┘
-                         ▲                    ▲
-                         │                    │
-                  ┌──────┴──────┐    ┌───────┴───────┐
-                  │ Unraid      │    │ React+Vite    │
-                  │ Plugin UI   │    │ Web App       │
-                  │ (PHP/jQuery)│    │ (standalone)  │
-                  └─────────────┘    └───────────────┘
+                    ┌─────────────────────────────────────────┐
+                    │         Go REST API Backend              │
+                    │         (localhost:18734)                │
+                    ├─────────────────────────────────────────┤
+                    │         gRPC Server (port 18735)         │
+                    ├──────────┬──────────┬────────────────────┤
+                    │  gRPC    │  gRPC    │  gRPC              │
+                    │  ◄─────► │  ◄─────► │  ◄─────►           │
+                    ▼          ▼          ▼                   │
+              host-alpha    host-beta    host-gamma            │
+              ┌──────────┐  ┌──────────┐  ┌──────────┐        │
+              │  Agent   │  │  Agent   │  │  Agent   │        │
+              │ Container│  │ Container│  │ Container│        │
+              └──────────┘  └──────────┘  └──────────┘        │
+                    └─────────────────────────────────────────┘
+                              ▲
+                              │
+                    ┌─────────┴─────────┐
+                    │   React+Vite      │
+                    │     Web App       │
+                    └───────────────────┘
 ```
-
-## Deployment Options
-
-| Target | Description |
-|--------|-------------|
-| **Unraid Plugin** | Native Unraid WebGUI tab using PHP/jQuery (Dynamix framework) |
-| **Web App** | Modern React+Vite standalone web interface |
-
-Both frontends consume the same Go backend API at `localhost:18734`.
 
 ## Installation
 
-### Unraid Plugin
+### Manager (Standalone)
 
-Install from Community Applications (search 'Podman Manager') or manually install via the .plg URL:
-`https://raw.githubusercontent.com/brdweb/podman-manager/main/unraid-plugin/podman-manager.plg`
-
-### Standalone
-
-1. Configure your hosts (see Configuration section) and place the file at `webapp/config.yaml`.
+1. Configure your hosts and place the file at `webapp/config.yaml`.
 2. Start the standalone container:
    ```bash
    cd webapp
@@ -91,149 +103,180 @@ Install from Community Applications (search 'Podman Manager') or manually instal
    http://localhost:8080
    ```
 
+### Agent (Remote Hosts)
+
+Install the agent on each Podman host you want to manage:
+
+```bash
+# Rootful installation
+curl -sSL https://raw.githubusercontent.com/brdweb/podman-manager/main/agent/install/install.sh | sudo bash -s -- --token YOUR_ENROLLMENT_TOKEN --manager manager.example.com:18735
+
+# Rootless installation
+curl -sSL https://raw.githubusercontent.com/brdweb/podman-manager/main/agent/install/install.sh | bash -s -- --token YOUR_ENROLLMENT_TOKEN --manager manager.example.com:18735
+```
+
+The installer:
+1. Creates a Quadlet `.container` file at `/etc/containers/systemd/podman-agent.container`
+2. Mounts the Podman socket (auto-detects rootful or rootless path)
+3. Starts the agent as a systemd-managed container
+4. The agent connects to the manager and enrolls using the provided token
+
 ## Configuration
 
-The backend uses a YAML configuration file to define the API server settings and the remote Podman hosts.
+The backend uses a YAML configuration file to define the API server settings and authentication.
 
 ```yaml
 # Podman Manager Configuration
-# Copy this to config.yaml and update with your host details.
 
 server:
   # Port for the REST API server
   port: 18734
-  # Bind address: 127.0.0.1 for local-only (plugin proxies API through PHP)
+  # Bind address: 127.0.0.1 for local-only deployments
   bind: "127.0.0.1"
 
-ssh:
-  # Path to the SSH private key (ed25519 recommended)
-  key_path: "~/.ssh/id_ed25519"
-  # Connection timeout per host
-  connect_timeout: "5s"
-  # Keepalive interval to prevent SSH drops
-  keepalive_interval: "30s"
-  # Host key verification: strict, accept-new, or off
-  strict_host_key_checking: "accept-new"
+# Agent gRPC server port
+agent:
+  port: 18735
 
-# Snapshot cache TTL (reduces SSH polling)
-cache_ttl: "3s"
+# SQLite auth database
+auth:
+  enabled: true
+  db_path: "/etc/podman-manager/auth.db"
 
 # Enable real-time event streaming via WebSocket
 enable_events_stream: true
 
-# Optional local authentication
-auth:
+# Optional local authentication (legacy single-user)
+local_auth:
   enabled: false
   username: ""
-  # Password hash (bcrypt) - generate with: htpasswd -nB username
   password_hash: ""
-
-# Podman hosts to manage
-hosts:
-  - name: "host-alpha"
-    address: "10.0.0.101"
-    port: 22
-    user: "your-user"
-    # rootful = uses 'sudo podman', rootless = uses 'podman' directly
-    mode: "rootful"
-
-  - name: "host-beta"
-    address: "10.0.0.102"
-    port: 22
-    user: "your-user"
-    mode: "rootful"
-
-  - name: "host-gamma"
-    address: "10.0.0.103"
-    port: 22
-    user: "your-user"
-    mode: "rootless"
 ```
 
 ### Configuration Sections
 
-- **server**: Defines the API port and bind address. Use `127.0.0.1` if the frontend is on the same machine (like the Unraid plugin).
-- **ssh**: Global SSH settings including the private key path, timeouts, and host key verification mode.
-  - `strict_host_key_checking`: 
-    - `strict` — Host must be in known_hosts, connection fails if unknown
-    - `accept-new` — Automatically add new hosts to known_hosts (default)
-    - `off` — Skip host key verification (insecure, not recommended)
-- **cache_ttl**: Duration to cache container/stats/system info before re-fetching via SSH.
+- **server**: Defines the API port and bind address. Use `127.0.0.1` if the frontend is on the same machine.
+- **agent**: gRPC server port for agent connections (default 18735).
+- **auth**: SQLite-backed multi-user authentication.
+  - `db_path`: Path to the SQLite database (default `/etc/podman-manager/auth.db`).
 - **enable_events_stream**: Enable WebSocket-based real-time container events.
-- **auth**: Optional local authentication for the web UI.
-- **hosts**: A list of remote Podman hosts.
-  - **name**: Display name in the UI.
-  - **address**: IP or hostname of the remote server.
-  - **port**: SSH port (usually 22).
-  - **user**: SSH username.
-  - **mode**: Either `rootful` (executes commands with `sudo podman`) or `rootless` (executes `podman` directly).
+- **local_auth**: Legacy single-user authentication (deprecated, use multi-user auth instead).
 
-## SSH Setup
+## User Roles
 
-Podman Manager connects to remote hosts via SSH. It requires a private key on the backend host and the corresponding public key on each managed host.
-
-### Key Generation
-
-Generate a new SSH key (ED25519 is recommended):
-```bash
-ssh-keygen -t ed25519 -f /path/to/key -N ""
-```
-
-### Key Deployment
-
-Copy the public key to each remote host:
-```bash
-ssh-copy-id -i /path/to/key.pub user@host
-```
-
-For the **Unraid plugin**, keys are typically stored at:
-`/boot/config/plugins/podman-manager/`
+| Role | Permissions |
+|------|------------|
+| **admin** | Full access: manage users, config, hosts, containers, volumes, networks |
+| **operator** | Manage containers, volumes, networks, images (no user/config management) |
+| **viewer** | Read-only: view containers, images, events, logs |
 
 ## Project Structure
 
 ```
 podman-manager/
-├── backend/                 # Go REST API server (shared)
-│   ├── cmd/podman-manager/  # Entry point
-│   ├── internal/api/        # HTTP handlers + router
-│   ├── internal/podman/     # SSH + Podman client + cache + events
-│   ├── internal/config/     # YAML config loading
-│   └── configs/             # Example configuration
-├── unraid-plugin/           # Unraid plugin files
-│   ├── podman-manager.plg   # Plugin installer manifest
-│   └── src/                 # Plugin source (PHP, JS, events)
-└── webapp/                  # React+Vite standalone web UI
-    ├── src/api/             # Type-safe API client
-    ├── src/components/      # Reusable UI components
-    ├── src/pages/           # Dashboard, containers, images, hosts
-    ├── Dockerfile           # Multi-stage production build
-    └── docker-compose.yaml  # Dev environment
+├── backend/                     # Go REST API server
+│   ├── cmd/podman-manager/      # Entry point
+│   ├── internal/api/            # HTTP handlers, router, RBAC middleware
+│   ├── internal/agent/          # gRPC server, agent registry, transport bridge
+│   ├── internal/auth/           # SQLite user/session store
+│   ├── internal/enroll/         # Token-based agent enrollment
+│   ├── internal/host/           # Transport abstraction (SSH + Agent)
+│   ├── internal/podman/         # Podman client, cache, events
+│   ├── internal/config/         # YAML config loading
+│   └── configs/                 # Example configuration
+├── agent/                       # Containerized host agent
+│   ├── cmd/agent/               # Entry point
+│   ├── internal/podman/         # Podman REST API client (Unix socket)
+│   ├── internal/config/         # Agent configuration
+│   ├── internal/quadlet.go      # Quadlet discovery
+│   ├── install/                 # Quadlet install scripts
+│   └── proto/                   # gRPC protocol definitions
+└── webapp/                      # React+Vite standalone web UI
+    ├── src/api/                 # Type-safe API client
+    ├── src/components/          # Reusable UI components (Toast, ErrorBoundary)
+    ├── src/pages/               # Dashboard, containers, volumes, networks, events, users
+    ├── src/hooks/               # TanStack Query hooks
+    ├── Dockerfile               # Multi-stage production build
+    └── docker-compose.yaml      # Dev environment
 ```
 
 ## API Reference
 
+### Authentication
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/health` | Backend health + host connectivity |
-| GET | `/api/version` | Backend version |
 | GET | `/api/auth/session` | Current session info |
 | POST | `/api/auth/login` | Login with credentials |
 | POST | `/api/auth/logout` | Logout current session |
+
+### Admin (admin only)
+| Method | Path | Description |
+|--------|------|-------------|
 | GET | `/api/admin/config` | Get current configuration |
 | PUT | `/api/admin/config` | Update configuration |
+
+### Users (admin only)
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/users` | List all users |
+| POST | `/api/users` | Create a new user |
+| GET | `/api/users/{id}` | Get user details |
+| PUT | `/api/users/{id}` | Update user (role, active status) |
+| PUT | `/api/users/{id}/password` | Reset user password |
+| DELETE | `/api/users/{id}` | Delete a user |
+| GET | `/api/users/me` | Get current user profile |
+
+### Agent Enrollment (admin only)
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/agent/tokens` | Create enrollment token |
+| GET | `/api/agent/tokens` | List active tokens |
+| DELETE | `/api/agent/tokens/{id}` | Revoke enrollment token |
+| GET | `/api/agent/install.sh` | Download install script |
+| GET | `/api/agent/hosts` | List enrolled agent hosts |
+
+### Hosts & Containers (operator+)
+| Method | Path | Description |
+|--------|------|-------------|
 | GET | `/api/hosts` | List configured hosts with status |
 | GET | `/api/hosts/{host}/containers` | List containers on a host |
+| POST | `/api/hosts/{host}/containers` | Create a container |
 | GET | `/api/hosts/{host}/containers/{id}` | Inspect container details |
 | POST | `/api/hosts/{host}/containers/{id}/start` | Start a container |
 | POST | `/api/hosts/{host}/containers/{id}/stop` | Stop a container |
 | POST | `/api/hosts/{host}/containers/{id}/restart` | Restart a container |
 | DELETE | `/api/hosts/{host}/containers/{id}` | Remove a container |
+| PUT | `/api/hosts/{host}/containers/{id}` | Update container settings |
 | GET | `/api/hosts/{host}/containers/{id}/logs` | Container logs (static) |
 | GET | `/api/hosts/{host}/containers/{id}/logs/stream` | Container logs (WebSocket stream) |
+
+### Volumes (operator+)
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/hosts/{host}/volumes` | List volumes on a host |
+| POST | `/api/hosts/{host}/volumes` | Create a volume |
+| DELETE | `/api/hosts/{host}/volumes/{name}` | Remove a volume |
+
+### Networks (operator+)
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/hosts/{host}/networks` | List networks on a host |
+| POST | `/api/hosts/{host}/networks` | Create a network |
+| DELETE | `/api/hosts/{host}/networks/{name}` | Remove a network |
+
+### Images (operator+)
+| Method | Path | Description |
+|--------|------|-------------|
 | GET | `/api/hosts/{host}/images` | List images on a host |
 | POST | `/api/hosts/{host}/images/pull` | Pull an image |
 | DELETE | `/api/hosts/{host}/images/{id}` | Remove an image |
 | POST | `/api/hosts/{host}/images/prune` | Prune unused images |
+
+### General (viewer+)
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/health` | Backend health + host connectivity |
+| GET | `/api/version` | Backend version |
 | GET | `/api/containers` | List all containers across hosts |
 | GET | `/api/overview` | Aggregated view of all hosts |
 | GET | `/api/events` | WebSocket for real-time container events |
@@ -276,29 +319,20 @@ Build the standalone container image:
 podman build -f webapp/Dockerfile -t podman-manager .
 ```
 
-### Plugin Packaging
+### Running Tests
 
-Package the Unraid plugin for local testing:
 ```bash
-cd unraid-plugin
-make package
-```
-
-### Release Building
-
-Generate a versioned release for Community Applications:
-```bash
-cd unraid-plugin
-make release VERSION=$(date +%Y.%m.%d)
+cd backend && go test ./...
+cd backend && go vet ./...
 ```
 
 ## Versioning
 
-Podman Manager uses date-based versioning (YYYY.MM.DD format), matching the Unraid plugin convention. The version is:
+Podman Manager uses date-based versioning (YYYY.MM.DD format). The version is:
 
-- Embedded in the backend binary at build time via `-ldflags`
+- Embedded in both the manager and agent binaries at build time via `-ldflags`
 - Displayed in the webapp header
-- Shown in the Unraid plugin manifest
+- Printed with `podman-manager -version` and `podman-agent -version`
 
 ## Contributing
 

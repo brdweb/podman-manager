@@ -1,4 +1,8 @@
 import { useState, type ReactNode } from 'react';
+import CodeMirror from '@uiw/react-codemirror';
+import { yaml as yamlLanguage } from '@codemirror/lang-yaml';
+import { oneDark } from '@codemirror/theme-one-dark';
+import { lineNumbers } from '@codemirror/view';
 import { useConfig, useSaveConfig } from '../hooks/useAdmin';
 import type { ConfigResponse } from '../types/api';
 
@@ -134,11 +138,14 @@ function AdminForm({ data }: { data: ConfigResponse }) {
             </div>
           </div>
 
-          <textarea
+          <CodeMirror
             value={yaml}
-            onChange={(event) => setYaml(event.target.value)}
-            className="min-h-[28rem] w-full rounded-2xl border border-zinc-800 bg-zinc-950 p-4 font-mono text-sm leading-6 text-zinc-100 outline-none transition-colors focus:border-zinc-600"
-            spellCheck={false}
+            onChange={setYaml}
+            height="28rem"
+            basicSetup={false}
+            extensions={[lineNumbers(), yamlLanguage()]}
+            theme={oneDark}
+            className="min-h-[28rem] overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 text-sm outline-none transition-colors focus-within:border-zinc-600"
           />
         </section>
       </div>

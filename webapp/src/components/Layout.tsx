@@ -1,14 +1,17 @@
 import { Link, Outlet, useLocation } from 'react-router-dom';
-import { useLogout, useSession } from '../hooks/useAuth';
+import { isAdmin, useLogout, useSession } from '../hooks/useAuth';
 import { useQuery } from '@tanstack/react-query';
 import { get } from '../api/client';
 
 const navItems = [
   { to: '/', label: 'Dashboard' },
   { to: '/containers', label: 'Containers' },
+  { to: '/hosts', label: 'Volumes' },
   { to: '/images', label: 'Images' },
+  { to: '/events', label: 'Events' },
   { to: '/hosts', label: 'Hosts' },
   { to: '/admin', label: 'Admin' },
+  { to: '/admin/users', label: 'Users', adminOnly: true },
 ];
 
 async function getVersion(): Promise<string> {
@@ -25,6 +28,17 @@ export function Layout() {
     queryFn: getVersion,
     staleTime: Infinity,
   });
+  const hostMatch = location.pathname.match(/^\/hosts\/([^/]+)/);
+  const hostName = hostMatch ? decodeURIComponent(hostMatch[1]) : null;
+  const scopedNavItems = hostName
+    ? [
+        ...navItems,
+        {
+          to: `/hosts/${encodeURIComponent(hostName)}/networks`,
+          label: 'Networks',
+        },
+      ]
+    : navItems;
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -35,15 +49,24 @@ export function Layout() {
             Podman Manager
           </Link>
           <nav className="flex gap-1">
-            {navItems.map((item) => {
+            {scopedNavItems.filter((item) => !item.adminOnly || isAdmin(session)).map((item) => {
+              const to = item.label === 'Volumes' && hostName
+                ? `/hosts/${encodeURIComponent(hostName)}/volumes`
+                : item.to;
               const isActive =
-                item.to === '/'
+                item.label === 'Volumes'
+                  ? /^\/hosts\/[^/]+\/volumes$/.test(location.pathname)
+                : item.label === 'Hosts'
+                  ? location.pathname === '/hosts' || /^\/hosts\/[^/]+$/.test(location.pathname)
+                : item.to === '/'
                   ? location.pathname === '/'
-                  : location.pathname.startsWith(item.to);
+                  : item.to === '/admin'
+                    ? location.pathname === '/admin'
+                  : location.pathname.startsWith(to);
               return (
                 <Link
-                  key={item.to}
-                  to={item.to}
+                  key={item.label}
+                  to={to}
                   className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
                     isActive
                       ? 'bg-zinc-800 text-zinc-100'

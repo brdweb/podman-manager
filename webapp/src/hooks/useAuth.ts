@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { getSession, login, logout } from '../api/auth';
+import type { SessionInfo } from '../types/api';
 
 export function useSession() {
   return useQuery({
@@ -32,4 +33,12 @@ export function useLogout() {
       });
     },
   });
+}
+
+export function hasRole(session: SessionInfo | undefined, role: NonNullable<SessionInfo['role']>) {
+  return session?.role === role;
+}
+
+export function isAdmin(session: SessionInfo | undefined) {
+  return hasRole(session, 'admin');
 }

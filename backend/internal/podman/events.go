@@ -85,22 +85,6 @@ func (s *EventStream) Subscribe(host string) error {
 	return nil
 }
 
-func (s *EventStream) Unsubscribe(host string) {
-	s.mu.Lock()
-	sub, ok := s.subscriptions[host]
-	if ok {
-		delete(s.subscriptions, host)
-	}
-	s.mu.Unlock()
-
-	if !ok {
-		return
-	}
-
-	sub.cancel()
-	<-sub.done
-}
-
 func (s *EventStream) Close() {
 	s.mu.Lock()
 	if s.closed {

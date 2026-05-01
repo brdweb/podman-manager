@@ -15,7 +15,7 @@ import (
 	"github.com/brdweb/podman-manager/internal/config"
 )
 
-var version = "dev"
+var version = "2026.05.01"
 
 func main() {
 	configPath := flag.String("config", "config.yaml", "path to configuration file")

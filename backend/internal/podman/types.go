@@ -1,9 +1,6 @@
 package podman
 
-import (
-	"fmt"
-	"time"
-)
+import "time"
 
 type HostStatus struct {
 	Name           string          `json:"name"`
@@ -55,13 +52,6 @@ type PortMapping struct {
 	HostPort      uint16 `json:"host_port"`
 	ContainerPort uint16 `json:"container_port"`
 	Protocol      string `json:"protocol"`
-}
-
-func (p PortMapping) HostBinding() string {
-	if p.HostIP == "" || p.HostIP == "0.0.0.0" {
-		return fmt.Sprintf("%d", p.HostPort)
-	}
-	return fmt.Sprintf("%s:%d", p.HostIP, p.HostPort)
 }
 
 type NetworkInfo struct {

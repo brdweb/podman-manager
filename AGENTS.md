@@ -12,7 +12,6 @@
 Podman Manager is a multi-host Podman container management tool with:
 
 - **Shared Go backend** (`backend/`) — REST API server connecting to remote hosts via SSH
-- **Unraid plugin** (`unraid-plugin/`) — PHP/jQuery UI for the Unraid WebGUI (Dynamix framework)
 - **Web application** (`webapp/`) — Modern React+Vite standalone web interface
 
 Both frontends consume the same Go backend API at `localhost:18734`.

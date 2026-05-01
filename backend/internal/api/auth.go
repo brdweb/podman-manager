@@ -1,33 +1,21 @@
 package api
 
 import (
-	"crypto/rand"
-	"encoding/hex"
+	"context"
 	"encoding/json"
 	"net/http"
-	"strings"
-	"sync"
 	"time"
 
-	"golang.org/x/crypto/bcrypt"
+	authpkg "github.com/brdweb/podman-manager/internal/auth"
 )
 
 const sessionCookieName = "podman_manager_session"
-
-type sessionStore struct {
-	mu       sync.RWMutex
-	sessions map[string]session
-}
-
-type session struct {
-	Username string
-	Expires  time.Time
-}
 
 type sessionResponse struct {
 	Enabled       bool   `json:"enabled"`
 	Authenticated bool   `json:"authenticated"`
 	Username      string `json:"username,omitempty"`
+	Role          string `json:"role,omitempty"`
 }
 
 type loginRequest struct {
@@ -35,77 +23,42 @@ type loginRequest struct {
 	Password string `json:"password"`
 }
 
-func newSessionStore() *sessionStore {
-	return &sessionStore{
-		sessions: make(map[string]session),
+func withAuth(server *Server) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			authConfig := server.authConfig()
+			if r.Method == http.MethodOptions || isPublicPath(r.URL.Path) {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			if !authConfig.Enabled {
+				ctx := context.WithValue(r.Context(), sessionKey, &authpkg.Session{Role: authpkg.RoleAdmin})
+				next.ServeHTTP(w, r.WithContext(ctx))
+				return
+			}
+
+			cookie, err := r.Cookie(sessionCookieName)
+			if err != nil {
+				writeError(w, http.StatusUnauthorized, "authentication required")
+				return
+			}
+
+			sess, err := server.authStore.GetSession(r.Context(), cookie.Value)
+			if err != nil {
+				writeError(w, http.StatusUnauthorized, "authentication required")
+				return
+			}
+
+			ctx := context.WithValue(r.Context(), sessionKey, sess)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
 	}
-}
-
-func (s *sessionStore) create(username string, ttl time.Duration) (string, error) {
-	buf := make([]byte, 32)
-	if _, err := rand.Read(buf); err != nil {
-		return "", err
-	}
-
-	token := hex.EncodeToString(buf)
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.sessions[token] = session{
-		Username: username,
-		Expires:  time.Now().Add(ttl),
-	}
-	return token, nil
-}
-
-func (s *sessionStore) get(token string) (session, bool) {
-	s.mu.RLock()
-	current, ok := s.sessions[token]
-	s.mu.RUnlock()
-	if !ok {
-		return session{}, false
-	}
-	if time.Now().After(current.Expires) {
-		s.delete(token)
-		return session{}, false
-	}
-	return current, true
-}
-
-func (s *sessionStore) delete(token string) {
-	if token == "" {
-		return
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	delete(s.sessions, token)
-}
-
-func withAuth(server *Server, next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodOptions || !server.authConfig().Enabled || isPublicPath(r.URL.Path) {
-			next.ServeHTTP(w, r)
-			return
-		}
-
-		cookie, err := r.Cookie(sessionCookieName)
-		if err != nil {
-			writeError(w, http.StatusUnauthorized, "authentication required")
-			return
-		}
-
-		if _, ok := server.sessions.get(cookie.Value); !ok {
-			writeError(w, http.StatusUnauthorized, "authentication required")
-			return
-		}
-
-		next.ServeHTTP(w, r)
-	})
 }
 
 func isPublicPath(path string) bool {
 	switch path {
-	case "/api/health", "/api/auth/session", "/api/auth/login":
+	case "/api/health", "/api/version", "/api/auth/session", "/api/auth/login", "/api/agent/install.sh":
 		return true
 	default:
 		return false
@@ -118,6 +71,7 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 
 	if !auth.Enabled {
 		resp.Authenticated = true
+		resp.Role = string(authpkg.RoleAdmin)
 		writeJSON(w, http.StatusOK, resp)
 		return
 	}
@@ -129,9 +83,10 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if current, ok := s.sessions.get(cookie.Value); ok {
+	if current, err := s.authStore.GetSession(r.Context(), cookie.Value); err == nil {
 		resp.Authenticated = true
 		resp.Username = current.Username
+		resp.Role = string(current.Role)
 	}
 
 	writeJSON(w, http.StatusOK, resp)
@@ -140,7 +95,7 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	auth := s.authConfig()
 	if !auth.Enabled {
-		writeJSON(w, http.StatusOK, sessionResponse{Enabled: false, Authenticated: true})
+		writeJSON(w, http.StatusOK, sessionResponse{Enabled: false, Authenticated: true, Role: string(authpkg.RoleAdmin)})
 		return
 	}
 
@@ -150,17 +105,13 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if strings.TrimSpace(req.Username) != auth.Username {
+	user, err := s.authStore.VerifyPassword(r.Context(), req.Username, req.Password)
+	if err != nil {
 		writeError(w, http.StatusUnauthorized, "invalid username or password")
 		return
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(auth.PasswordHash), []byte(req.Password)); err != nil {
-		writeError(w, http.StatusUnauthorized, "invalid username or password")
-		return
-	}
-
-	token, err := s.sessions.create(auth.Username, auth.SessionTTL)
+	session, err := s.authStore.CreateSession(r.Context(), user.ID, auth.SessionTTL)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create session")
 		return
@@ -168,7 +119,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
-		Value:    token,
+		Value:    session.Token,
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
@@ -179,13 +130,16 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, sessionResponse{
 		Enabled:       true,
 		Authenticated: true,
-		Username:      auth.Username,
+		Username:      user.Username,
+		Role:          string(user.Role),
 	})
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	if cookie, err := r.Cookie(sessionCookieName); err == nil {
-		s.sessions.delete(cookie.Value)
+		if err := s.authStore.DeleteSession(r.Context(), cookie.Value); err != nil {
+			s.logger.Warn("failed to delete auth session", "error", err)
+		}
 	}
 
 	http.SetCookie(w, &http.Cookie{

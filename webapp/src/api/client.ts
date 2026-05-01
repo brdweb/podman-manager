@@ -27,15 +27,27 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     );
   }
 
-  return res.json() as Promise<T>;
+  if (res.status === 204) {
+    return undefined as T;
+  }
+
+  const text = await res.text();
+  if (!text) {
+    return undefined as T;
+  }
+
+  return JSON.parse(text) as T;
 }
 
 export function get<T>(path: string): Promise<T> {
   return request<T>(path);
 }
 
-export function post<T>(path: string): Promise<T> {
-  return request<T>(path, { method: 'POST' });
+export function post<T>(path: string, body?: unknown): Promise<T> {
+  return request<T>(path, {
+    method: 'POST',
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
 }
 
 export function postJSON<T>(path: string, body: unknown): Promise<T> {
@@ -46,6 +58,13 @@ export function postJSON<T>(path: string, body: unknown): Promise<T> {
 }
 
 export function putJSON<T>(path: string, body: unknown): Promise<T> {
+  return request<T>(path, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  });
+}
+
+export function put<T>(path: string, body: unknown): Promise<T> {
   return request<T>(path, {
     method: 'PUT',
     body: JSON.stringify(body),

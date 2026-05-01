@@ -20,8 +20,9 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Port int    `yaml:"port"`
-	Bind string `yaml:"bind"`
+	Port       int    `yaml:"port"`
+	Bind       string `yaml:"bind"`
+	AuthDBPath string `yaml:"auth_db_path,omitempty"`
 }
 
 type SSHConfig struct {
@@ -79,11 +80,13 @@ func yamlMappingHasKey(value *yaml.Node, key string) bool {
 }
 
 type HostConfig struct {
-	Name    string `yaml:"name"`
-	Address string `yaml:"address"`
-	Port    int    `yaml:"port"`
-	User    string `yaml:"user"`
-	Mode    string `yaml:"mode"` // "rootful" or "rootless"
+	Name      string `yaml:"name"`
+	Address   string `yaml:"address"`
+	Port      int    `yaml:"port"`
+	User      string `yaml:"user"`
+	Mode      string `yaml:"mode"` // "rootful" or "rootless"
+	Transport string `yaml:"transport,omitempty"`
+	AgentID   string `yaml:"agent_id,omitempty"`
 }
 
 type AuthConfig struct {
@@ -175,6 +178,12 @@ func (c *Config) Validate() error {
 
 	names := make(map[string]bool)
 	for i, h := range c.Hosts {
+		h.Transport = strings.ToLower(strings.TrimSpace(h.Transport))
+		if h.Transport == "" {
+			h.Transport = "ssh"
+		}
+		c.Hosts[i].Transport = h.Transport
+
 		if h.Name == "" {
 			return fmt.Errorf("hosts[%d].name is required", i)
 		}
@@ -182,6 +191,13 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("duplicate host name: %s", h.Name)
 		}
 		names[h.Name] = true
+
+		if h.Transport != "ssh" && h.Transport != "agent" {
+			return fmt.Errorf("hosts[%d].transport must be 'ssh' or 'agent', got '%s'", i, h.Transport)
+		}
+		if h.Transport == "agent" && strings.TrimSpace(h.AgentID) == "" {
+			return fmt.Errorf("hosts[%d].agent_id is required when transport is 'agent'", i)
+		}
 
 		if h.Address == "" {
 			return fmt.Errorf("hosts[%d].address is required", i)

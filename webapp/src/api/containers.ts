@@ -3,9 +3,13 @@ import type {
   ActionResult,
   Container,
   ContainerDetail,
-  LogsResponse,
+  CreateContainerPayload,
+  CreateNetworkPayload,
+  CreateVolumePayload,
+  Network,
   UpdateCheckResult,
   UpdateResult,
+  Volume,
 } from '../types/api';
 
 export function getContainers(host: string): Promise<Container[]> {
@@ -22,6 +26,62 @@ export function getContainer(
 ): Promise<ContainerDetail> {
   return get<ContainerDetail>(
     `/api/hosts/${encodeURIComponent(host)}/containers/${encodeURIComponent(id)}`
+  );
+}
+
+export function createContainer(
+  host: string,
+  payload: CreateContainerPayload
+): Promise<ActionResult> {
+  return post<ActionResult>(
+    `/api/hosts/${encodeURIComponent(host)}/containers`,
+    payload
+  );
+}
+
+export function listNetworks(host: string): Promise<Network[]> {
+  return get<Network[]>(`/api/hosts/${encodeURIComponent(host)}/networks`);
+}
+
+export function createNetwork(
+  host: string,
+  payload: CreateNetworkPayload
+): Promise<Network> {
+  return post<Network>(
+    `/api/hosts/${encodeURIComponent(host)}/networks`,
+    payload
+  );
+}
+
+export function removeNetwork(
+  host: string,
+  name: string
+): Promise<ActionResult> {
+  return del<ActionResult>(
+    `/api/hosts/${encodeURIComponent(host)}/networks/${encodeURIComponent(name)}`
+  );
+}
+
+export function listVolumes(host: string): Promise<Volume[]> {
+  return get<Volume[]>(`/api/hosts/${encodeURIComponent(host)}/volumes`);
+}
+
+export function createVolume(
+  host: string,
+  payload: CreateVolumePayload
+): Promise<Volume> {
+  return post<Volume>(
+    `/api/hosts/${encodeURIComponent(host)}/volumes`,
+    payload
+  );
+}
+
+export function removeVolume(
+  host: string,
+  name: string
+): Promise<ActionResult> {
+  return del<ActionResult>(
+    `/api/hosts/${encodeURIComponent(host)}/volumes/${encodeURIComponent(name)}`
   );
 }
 
@@ -49,16 +109,6 @@ export function restartContainer(
 ): Promise<ActionResult> {
   return post<ActionResult>(
     `/api/hosts/${encodeURIComponent(host)}/containers/${encodeURIComponent(id)}/restart`
-  );
-}
-
-export function getContainerLogs(
-  host: string,
-  id: string,
-  tail = 100
-): Promise<LogsResponse> {
-  return get<LogsResponse>(
-    `/api/hosts/${encodeURIComponent(host)}/containers/${encodeURIComponent(id)}/logs?tail=${tail}`
   );
 }
 

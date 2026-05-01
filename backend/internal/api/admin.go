@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -101,15 +102,15 @@ func (s *Server) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	newPool, err := podman.NewSSHPool(cfg, s.logger)
+	newHosts, newPool, err := buildHostManager(cfg, s.logger, s.grpcServer)
 	if err != nil {
-		s.logger.Error("failed to initialize SSH pool for updated config", "error", err)
+		s.logger.Error("failed to initialize host transports for updated config", "error", err)
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	var newEvents *podman.EventStream
-	if cfg.EnableEventsStream {
+	if cfg.EnableEventsStream && newPool != nil {
 		newEvents = podman.NewEventStream(newPool, s.logger)
 		for _, hostName := range newPool.HostNames() {
 			if err := newEvents.Subscribe(hostName); err != nil {
@@ -123,26 +124,32 @@ func (s *Server) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 		if newEvents != nil {
 			newEvents.Close()
 		}
-		newPool.Close()
+		_ = newHosts.Close()
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	newClient := podman.NewClient(newPool, s.logger, cfg.CacheTTL)
+	if err := seedConfigAuthUser(context.Background(), s.authStore, cfg); err != nil {
+		s.logger.Error("failed to synchronize auth user", "error", err)
+		if newEvents != nil {
+			newEvents.Close()
+		}
+		_ = newHosts.Close()
+		writeError(w, http.StatusInternalServerError, "failed to synchronize auth user")
+		return
+	}
 
 	s.mu.Lock()
-	oldPool := s.pool
+	oldHosts := s.hosts
 	oldEvents := s.events
-	s.pool = newPool
-	s.client = newClient
+	s.hosts = newHosts
 	s.config = cfg
 	s.events = newEvents
 	s.eventsEnabled = cfg.EnableEventsStream
-	s.sessions = newSessionStore()
 	s.mu.Unlock()
 
-	if oldPool != nil {
-		oldPool.Close()
+	if oldHosts != nil {
+		_ = oldHosts.Close()
 	}
 
 	if oldEvents != nil {

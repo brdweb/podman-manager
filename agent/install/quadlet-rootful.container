@@ -1,0 +1,23 @@
+[Unit]
+Description=Podman Manager Agent
+After=podman.service
+Requires=podman.service
+
+[Container]
+Image=ghcr.io/brdweb/podman-manager/agent:latest
+ContainerName=podman-manager-agent
+Volume=/run/podman/podman.sock:/run/podman/podman.sock
+Volume=/etc/containers/systemd:/etc/containers/systemd:ro
+Volume=/proc:/host/proc:ro
+Volume=/sys:/host/sys:ro
+Volume=/dev:/host/dev:ro
+Volume=/etc/os-release:/host/etc/os-release:ro
+Environment=AGENT_MANAGER_URL=__MANAGER_URL__
+Environment=AGENT_TOKEN=__TOKEN__
+Environment=AGENT_LOG_LEVEL=info
+Environment=AGENT_LOG_FORMAT=json
+Restart=always
+ReadOnlyRootFilesystem=true
+
+[Install]
+WantedBy=default.target

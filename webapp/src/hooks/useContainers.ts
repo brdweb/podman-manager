@@ -1,9 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  createContainer,
   getAllContainers,
   getContainers,
   getContainer,
-  getContainerLogs,
+  listNetworks,
+  createNetwork,
+  removeNetwork,
+  listVolumes,
+  createVolume,
+  removeVolume,
   startContainer,
   stopContainer,
   restartContainer,
@@ -11,6 +17,7 @@ import {
   checkContainerUpdate,
   updateContainer,
 } from '../api/containers';
+import type { CreateContainerPayload, CreateNetworkPayload, CreateVolumePayload } from '../types/api';
 
 export function useContainers(host: string) {
   return useQuery({
@@ -37,12 +44,83 @@ export function useContainerDetail(host: string, id: string) {
   });
 }
 
-export function useContainerLogs(host: string, id: string, tail = 200) {
+export function useNetworks(host: string) {
   return useQuery({
-    queryKey: ['logs', host, id, tail],
-    queryFn: () => getContainerLogs(host, id, tail),
-    enabled: !!host && !!id,
-    refetchInterval: 5_000,
+    queryKey: ['networks', host],
+    queryFn: () => listNetworks(host),
+    enabled: !!host,
+    refetchInterval: 30_000,
+  });
+}
+
+export function useVolumes(host: string) {
+  return useQuery({
+    queryKey: ['volumes', host],
+    queryFn: () => listVolumes(host),
+    enabled: !!host,
+    refetchInterval: 30_000,
+  });
+}
+
+export function useCreateContainer() {
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ host, payload }: { host: string; payload: CreateContainerPayload }) =>
+      createContainer(host, payload),
+    onSuccess: (_data, { host }) => {
+      void qc.invalidateQueries({ queryKey: ['containers', host] });
+      void qc.invalidateQueries({ queryKey: ['containers', 'all'] });
+      void qc.invalidateQueries({ queryKey: ['overview'] });
+    },
+  });
+}
+
+export function useCreateNetwork() {
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ host, payload }: { host: string; payload: CreateNetworkPayload }) =>
+      createNetwork(host, payload),
+    onSuccess: (_data, { host }) => {
+      void qc.invalidateQueries({ queryKey: ['networks', host] });
+    },
+  });
+}
+
+export function useRemoveNetwork() {
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ host, name }: { host: string; name: string }) =>
+      removeNetwork(host, name),
+    onSuccess: (_data, { host }) => {
+      void qc.invalidateQueries({ queryKey: ['networks', host] });
+    },
+  });
+}
+
+export function useCreateVolume() {
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ host, payload }: { host: string; payload: CreateVolumePayload }) =>
+      createVolume(host, payload),
+    onSuccess: (_data, { host }) => {
+      void qc.invalidateQueries({ queryKey: ['volumes', host] });
+    },
+  });
+}
+
+export function useRemoveVolume() {
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ host, name }: { host: string; name: string }) =>
+      removeVolume(host, name),
+    onSuccess: (_data, { host }) => {
+      void qc.invalidateQueries({ queryKey: ['volumes', host] });
+    },
   });
 }
 

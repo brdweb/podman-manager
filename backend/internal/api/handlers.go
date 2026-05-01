@@ -4,30 +4,62 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
 
-	"github.com/brdweb/podman-manager/internal/podman"
+	"github.com/brdweb/podman-manager/internal/host"
 	xwebsocket "golang.org/x/net/websocket"
 )
 
 var logsStreamUpgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
-		return true
+		return sameOrigin(r)
 	},
 }
 
+func sameOrigin(r *http.Request) bool {
+	origin := strings.TrimSpace(r.Header.Get("Origin"))
+	if origin == "" {
+		return true
+	}
+
+	originURL, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+
+	return normalizeHost(originURL.Host) == normalizeHost(r.Host)
+}
+
+func normalizeHost(host string) string {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if h, p, err := net.SplitHostPort(host); err == nil {
+		if p == "80" || p == "443" {
+			return strings.ToLower(h)
+		}
+	}
+	return host
+}
+
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	client := s.clientSnapshot()
-	hostNames := client.HostNames()
+	hosts := s.hostsSnapshot()
+	hostNames := hosts.Names()
 	statuses := make(map[string]string)
 
 	for _, name := range hostNames {
-		latency, err := client.Pool().Ping(name)
+		transport, ok := hosts.Get(name)
+		if !ok {
+			statuses[name] = "offline"
+			continue
+		}
+
+		latency, err := transport.Ping(r.Context())
 		if err != nil {
 			statuses[name] = "offline"
 		} else {
@@ -48,20 +80,22 @@ func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListHosts(w http.ResponseWriter, r *http.Request) {
-	client := s.clientSnapshot()
-	hostNames := client.HostNames()
-	hosts := make([]map[string]interface{}, 0, len(hostNames))
+	hosts := s.hostsSnapshot()
+	cfg := s.configSnapshot()
+	resp := make([]map[string]interface{}, 0, len(cfg.Hosts))
 
-	for _, name := range hostNames {
-		cfg, _ := client.Pool().HostConfig(name)
+	for _, hostCfg := range cfg.Hosts {
 		h := map[string]interface{}{
-			"name":    cfg.Name,
-			"address": cfg.Address,
-			"mode":    cfg.Mode,
+			"name":    hostCfg.Name,
+			"address": hostCfg.Address,
+			"mode":    hostCfg.Mode,
 		}
 
-		latency, err := client.Pool().Ping(name)
-		if err != nil {
+		transport, ok := hosts.Get(hostCfg.Name)
+		if !ok {
+			h["status"] = "offline"
+			h["error"] = "transport not registered"
+		} else if latency, err := transport.Ping(r.Context()); err != nil {
 			h["status"] = "offline"
 			h["error"] = err.Error()
 		} else {
@@ -69,16 +103,22 @@ func (s *Server) handleListHosts(w http.ResponseWriter, r *http.Request) {
 			h["latency"] = latency.Round(time.Millisecond).String()
 		}
 
-		hosts = append(hosts, h)
+		resp = append(resp, h)
 	}
 
-	writeJSON(w, http.StatusOK, hosts)
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) handleListContainers(w http.ResponseWriter, r *http.Request) {
 	hostName := r.PathValue("host")
 
-	containers, err := s.clientSnapshot().ListContainers(r.Context(), hostName)
+	transport, ok := s.hostsSnapshot().Get(hostName)
+	if !ok {
+		writeError(w, http.StatusBadGateway, "unknown host: "+hostName)
+		return
+	}
+
+	containers, err := transport.ListContainers(r.Context())
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
@@ -87,11 +127,48 @@ func (s *Server) handleListContainers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, containers)
 }
 
+func (s *Server) handleCreateContainer(w http.ResponseWriter, r *http.Request) {
+	hostName := r.PathValue("host")
+
+	var req host.CreateContainerRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid container create payload")
+		return
+	}
+
+	req.Image = strings.TrimSpace(req.Image)
+	if req.Image == "" {
+		writeError(w, http.StatusBadRequest, "image is required")
+		return
+	}
+	req.Name = strings.TrimSpace(req.Name)
+
+	transport, ok := s.hostsSnapshot().Get(hostName)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "unknown host: "+hostName)
+		return
+	}
+
+	result, err := transport.CreateContainer(r.Context(), &req)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, result)
+}
+
 func (s *Server) handleInspectContainer(w http.ResponseWriter, r *http.Request) {
 	hostName := r.PathValue("host")
 	containerID := r.PathValue("id")
 
-	detail, err := s.clientSnapshot().InspectContainer(r.Context(), hostName, containerID)
+	transport, ok := s.hostsSnapshot().Get(hostName)
+	if !ok {
+		writeError(w, http.StatusBadGateway, "unknown host: "+hostName)
+		return
+	}
+
+	detail, err := transport.InspectContainer(r.Context(), containerID)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
@@ -101,22 +178,34 @@ func (s *Server) handleInspectContainer(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) handleStartContainer(w http.ResponseWriter, r *http.Request) {
-	s.handleContainerAction(w, r, s.clientSnapshot().StartContainer)
+	s.handleContainerAction(w, r, func(ctx context.Context, t host.Transport, containerID string) (*host.ActionResult, error) {
+		return t.StartContainer(ctx, containerID)
+	})
 }
 
 func (s *Server) handleStopContainer(w http.ResponseWriter, r *http.Request) {
-	s.handleContainerAction(w, r, s.clientSnapshot().StopContainer)
+	s.handleContainerAction(w, r, func(ctx context.Context, t host.Transport, containerID string) (*host.ActionResult, error) {
+		return t.StopContainer(ctx, containerID)
+	})
 }
 
 func (s *Server) handleRestartContainer(w http.ResponseWriter, r *http.Request) {
-	s.handleContainerAction(w, r, s.clientSnapshot().RestartContainer)
+	s.handleContainerAction(w, r, func(ctx context.Context, t host.Transport, containerID string) (*host.ActionResult, error) {
+		return t.RestartContainer(ctx, containerID)
+	})
 }
 
 func (s *Server) handleCheckContainerUpdate(w http.ResponseWriter, r *http.Request) {
 	hostName := r.PathValue("host")
 	containerID := r.PathValue("id")
 
-	result, err := s.clientSnapshot().CheckForUpdate(r.Context(), hostName, containerID)
+	transport, ok := s.hostsSnapshot().Get(hostName)
+	if !ok {
+		writeError(w, http.StatusBadGateway, "unknown host: "+hostName)
+		return
+	}
+
+	result, err := transport.CheckForUpdate(r.Context(), containerID)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
@@ -129,7 +218,13 @@ func (s *Server) handleUpdateContainer(w http.ResponseWriter, r *http.Request) {
 	hostName := r.PathValue("host")
 	containerID := r.PathValue("id")
 
-	result, err := s.clientSnapshot().UpdateContainer(r.Context(), hostName, containerID)
+	transport, ok := s.hostsSnapshot().Get(hostName)
+	if !ok {
+		writeError(w, http.StatusBadGateway, "unknown host: "+hostName)
+		return
+	}
+
+	result, err := transport.UpdateContainer(r.Context(), containerID)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
@@ -157,7 +252,13 @@ func (s *Server) handleRemoveContainer(w http.ResponseWriter, r *http.Request) {
 		force = parsedForce
 	}
 
-	result, err := s.clientSnapshot().RemoveContainer(r.Context(), hostName, containerID, force)
+	transport, ok := s.hostsSnapshot().Get(hostName)
+	if !ok {
+		writeError(w, http.StatusBadGateway, "unknown host: "+hostName)
+		return
+	}
+
+	result, err := transport.RemoveContainer(r.Context(), containerID, force)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -178,13 +279,19 @@ func (s *Server) handleRemoveContainer(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, status, result)
 }
 
-type containerActionFunc func(ctx context.Context, hostName, containerID string) (*podman.ActionResult, error)
+type containerActionFunc func(ctx context.Context, transport host.Transport, containerID string) (*host.ActionResult, error)
 
 func (s *Server) handleContainerAction(w http.ResponseWriter, r *http.Request, action containerActionFunc) {
 	hostName := r.PathValue("host")
 	containerID := r.PathValue("id")
 
-	result, err := action(r.Context(), hostName, containerID)
+	transport, ok := s.hostsSnapshot().Get(hostName)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "unknown host: "+hostName)
+		return
+	}
+
+	result, err := action(r.Context(), transport, containerID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -208,7 +315,13 @@ func (s *Server) handleContainerLogs(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	logs, err := s.clientSnapshot().ContainerLogs(r.Context(), hostName, containerID, tail)
+	transport, ok := s.hostsSnapshot().Get(hostName)
+	if !ok {
+		writeError(w, http.StatusBadGateway, "unknown host: "+hostName)
+		return
+	}
+
+	logs, err := transport.ContainerLogs(r.Context(), containerID, tail)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
@@ -243,8 +356,14 @@ func (s *Server) handleContainerLogsStream(w http.ResponseWriter, r *http.Reques
 	logsCh := make(chan string, 256)
 	errCh := make(chan error, 1)
 
+	transport, ok := s.hostsSnapshot().Get(hostName)
+	if !ok {
+		_ = ws.WriteJSON(map[string]string{"error": "unknown host: " + hostName})
+		return
+	}
+
 	go func() {
-		errCh <- s.clientSnapshot().StreamLogs(ctx, hostName, containerID, tail, logsCh)
+		errCh <- transport.StreamLogs(ctx, containerID, tail, logsCh)
 	}()
 
 	go func() {
@@ -279,7 +398,7 @@ func (s *Server) handleContainerLogsStream(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
-	overview := s.clientSnapshot().Overview(r.Context())
+	overview := s.hostsSnapshot().Overview(r.Context())
 	writeJSON(w, http.StatusOK, overview)
 }
 
@@ -292,7 +411,13 @@ type pullImageRequest struct {
 func (s *Server) handleListImages(w http.ResponseWriter, r *http.Request) {
 	hostName := r.PathValue("host")
 
-	images, err := s.clientSnapshot().ListImages(r.Context(), hostName)
+	transport, ok := s.hostsSnapshot().Get(hostName)
+	if !ok {
+		writeError(w, http.StatusBadGateway, "unknown host: "+hostName)
+		return
+	}
+
+	images, err := transport.ListImages(r.Context())
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
@@ -322,12 +447,18 @@ func (s *Server) handlePullImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.clientSnapshot().PullImage(r.Context(), hostName, imageRef); err != nil {
+	transport, ok := s.hostsSnapshot().Get(hostName)
+	if !ok {
+		writeError(w, http.StatusBadGateway, "unknown host: "+hostName)
+		return
+	}
+
+	if err := transport.PullImage(r.Context(), imageRef); err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
 
-	writeJSON(w, http.StatusOK, podman.ActionResult{
+	writeJSON(w, http.StatusOK, host.ActionResult{
 		Success: true,
 		Message: "Image pulled successfully",
 	})
@@ -342,12 +473,18 @@ func (s *Server) handleRemoveImage(w http.ResponseWriter, r *http.Request) {
 		force = forceRaw == "1" || strings.EqualFold(forceRaw, "true") || strings.EqualFold(forceRaw, "yes")
 	}
 
-	if err := s.clientSnapshot().RemoveImage(r.Context(), hostName, imageID, force); err != nil {
+	transport, ok := s.hostsSnapshot().Get(hostName)
+	if !ok {
+		writeError(w, http.StatusBadGateway, "unknown host: "+hostName)
+		return
+	}
+
+	if err := transport.RemoveImage(r.Context(), imageID, force); err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
 
-	writeJSON(w, http.StatusOK, podman.ActionResult{
+	writeJSON(w, http.StatusOK, host.ActionResult{
 		Success: true,
 		Message: "Image removed successfully",
 	})
@@ -356,7 +493,13 @@ func (s *Server) handleRemoveImage(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handlePruneImages(w http.ResponseWriter, r *http.Request) {
 	hostName := r.PathValue("host")
 
-	pruned, err := s.clientSnapshot().PruneImages(r.Context(), hostName)
+	transport, ok := s.hostsSnapshot().Get(hostName)
+	if !ok {
+		writeError(w, http.StatusBadGateway, "unknown host: "+hostName)
+		return
+	}
+
+	pruned, err := transport.PruneImages(r.Context())
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
@@ -368,9 +511,115 @@ func (s *Server) handlePruneImages(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handleCreateVolume(w http.ResponseWriter, r *http.Request) {
+	hostName := r.PathValue("host")
+
+	var req host.CreateVolumeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid volume create payload")
+		return
+	}
+
+	req.Name = strings.TrimSpace(req.Name)
+	if req.Name == "" {
+		writeError(w, http.StatusBadRequest, "volume name is required")
+		return
+	}
+	req.Driver = strings.TrimSpace(req.Driver)
+
+	transport, ok := s.hostsSnapshot().Get(hostName)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "unknown host: "+hostName)
+		return
+	}
+
+	volume, err := transport.CreateVolume(r.Context(), &req)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, volume)
+}
+
+func (s *Server) handleListNetworks(w http.ResponseWriter, r *http.Request) {
+	hostName := r.PathValue("host")
+
+	transport, ok := s.hostsSnapshot().Get(hostName)
+	if !ok {
+		writeError(w, http.StatusBadGateway, "unknown host: "+hostName)
+		return
+	}
+
+	networks, err := transport.ListNetworks(r.Context())
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, networks)
+}
+
+func (s *Server) handleCreateNetwork(w http.ResponseWriter, r *http.Request) {
+	hostName := r.PathValue("host")
+
+	var req host.CreateNetworkRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid network create payload")
+		return
+	}
+
+	req.Name = strings.TrimSpace(req.Name)
+	if req.Name == "" {
+		writeError(w, http.StatusBadRequest, "network name is required")
+		return
+	}
+	req.Driver = strings.TrimSpace(req.Driver)
+	req.Gateway = strings.TrimSpace(req.Gateway)
+
+	transport, ok := s.hostsSnapshot().Get(hostName)
+	if !ok {
+		writeError(w, http.StatusInternalServerError, "unknown host: "+hostName)
+		return
+	}
+
+	network, err := transport.CreateNetwork(r.Context(), &req)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, network)
+}
+
+func (s *Server) handleRemoveNetwork(w http.ResponseWriter, r *http.Request) {
+	hostName := r.PathValue("host")
+	networkName := strings.TrimSpace(r.PathValue("name"))
+	if networkName == "" {
+		writeError(w, http.StatusBadRequest, "network name is required")
+		return
+	}
+
+	transport, ok := s.hostsSnapshot().Get(hostName)
+	if !ok {
+		writeError(w, http.StatusBadGateway, "unknown host: "+hostName)
+		return
+	}
+
+	if err := transport.RemoveNetwork(r.Context(), networkName); err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, host.ActionResult{
+		Success: true,
+		Message: "Network removed successfully",
+	})
+}
+
 func (s *Server) handleAllContainers(w http.ResponseWriter, r *http.Request) {
-	overview := s.clientSnapshot().Overview(r.Context())
-	all := make([]podman.Container, 0)
+	overview := s.hostsSnapshot().Overview(r.Context())
+	all := make([]host.Container, 0)
 	for _, host := range overview.Hosts {
 		all = append(all, host.Containers...)
 	}

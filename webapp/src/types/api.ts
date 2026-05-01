@@ -44,6 +44,40 @@ export interface Image {
   host?: string;
 }
 
+export interface Volume {
+  name: string;
+  driver: string;
+  labels?: Record<string, string>;
+  createdAt?: string;
+  mountpoint?: string;
+}
+
+export interface CreateVolumePayload {
+  name: string;
+  driver?: string;
+  labels?: Record<string, string>;
+  options?: Record<string, string>;
+}
+
+export interface Network {
+  name: string;
+  driver: string;
+  subnets?: string[];
+  gateway?: string;
+  internal?: boolean;
+  labels?: Record<string, string>;
+}
+
+export interface CreateNetworkPayload {
+  name: string;
+  driver?: string;
+  subnets?: string[];
+  gateway?: string;
+  internal?: boolean;
+  labels?: Record<string, string>;
+  options?: Record<string, string>;
+}
+
 export interface PortMapping {
   host_ip: string;
   host_port: number;
@@ -75,6 +109,32 @@ export interface ContainerDetail extends Container {
   finished_at?: string;
 }
 
+export interface CreateContainerPayload {
+  name: string;
+  image: string;
+  network?: string;
+  ports?: Array<{
+    hostPort: number;
+    containerPort: number;
+    protocol: string;
+  }>;
+  envVars?: Record<string, string>;
+  labels?: Record<string, string>;
+  volumes?: Array<{
+    volumeName: string;
+    containerPath: string;
+  }>;
+  restartPolicy?: string;
+  privileged?: boolean;
+  capAdd?: string[];
+  cmd?: string[];
+  entrypoint?: string[];
+  workingDir?: string;
+  user?: string;
+  memoryMB?: number;
+  cpuShares?: number;
+}
+
 export interface ActionResult {
   success: boolean;
   message?: string;
@@ -85,22 +145,41 @@ export interface OverviewResponse {
   hosts: HostStatus[];
 }
 
-export interface HealthResponse {
-  status: string;
-  hosts: Record<string, string>;
+export type PodmanEventType = 'container' | 'image' | 'volume' | 'network' | string;
+
+export interface PodmanEventPayload {
+  Type?: PodmanEventType;
+  type?: PodmanEventType;
+  Action?: string;
+  action?: string;
+  Status?: string;
+  status?: string;
+  ID?: string;
+  id?: string;
+  Name?: string;
+  name?: string;
+  Image?: string;
+  image?: string;
+  Time?: string | number;
+  time?: string | number;
+  TimeNano?: number;
+  timeNano?: number;
+  attributes?: Record<string, string>;
+  Attributes?: Record<string, string>;
+  Actor?: {
+    ID?: string;
+    Attributes?: Record<string, string>;
+  };
+  actor?: {
+    id?: string;
+    attributes?: Record<string, string>;
+  };
+  [key: string]: unknown;
 }
 
-export interface HostInfo {
-  name: string;
-  address: string;
-  mode: string;
-  status: string;
-  error?: string;
-  latency?: string;
-}
-
-export interface LogsResponse {
-  logs: string;
+export interface PodmanEvent {
+  host: string;
+  event: PodmanEventPayload;
 }
 
 export interface HostSystemInfo {
@@ -149,11 +228,14 @@ export interface UpdateResult {
   new_image?: string;
 }
 
-export interface SessionState {
+export interface SessionInfo {
   enabled: boolean;
   authenticated: boolean;
   username?: string;
+  role?: 'admin' | 'operator' | 'viewer';
 }
+
+export type SessionState = SessionInfo;
 
 export interface ConfigResponse {
   path: string;

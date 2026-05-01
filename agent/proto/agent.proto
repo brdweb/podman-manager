@@ -1,0 +1,522 @@
+syntax = "proto3";
+
+package agent;
+
+option go_package = "github.com/brdweb/podman-manager/agent/proto;agentpb";
+
+import "google/protobuf/timestamp.proto";
+
+service AgentService {
+  // Main bidirectional control channel. The agent initiates the stream,
+  // sends typed requests, and receives typed manager responses.
+  rpc Connect(stream AgentMessage) returns (stream ManagerMessage);
+
+  // Initial enrollment. The agent exchanges an enrollment token for a
+  // persistent credential used on subsequent connections.
+  rpc Enroll(EnrollRequest) returns (EnrollResponse);
+}
+
+message AgentMessage {
+  oneof type {
+    Heartbeat heartbeat = 1;
+    ContainerListRequest container_list_request = 2;
+    ContainerInspectRequest container_inspect_request = 3;
+    ContainerStartRequest container_start_request = 4;
+    ContainerStopRequest container_stop_request = 5;
+    ContainerRestartRequest container_restart_request = 6;
+    ContainerRemoveRequest container_remove_request = 7;
+    ContainerCreateRequest container_create_request = 8;
+    ContainerLogsRequest container_logs_request = 9;
+    ImageListRequest image_list_request = 10;
+    ImagePullRequest image_pull_request = 11;
+    ImageRemoveRequest image_remove_request = 12;
+    ImagePruneRequest image_prune_request = 13;
+    VolumeListRequest volume_list_request = 14;
+    VolumeCreateRequest volume_create_request = 15;
+    VolumeRemoveRequest volume_remove_request = 16;
+    VolumePruneRequest volume_prune_request = 17;
+    NetworkListRequest network_list_request = 18;
+    NetworkCreateRequest network_create_request = 19;
+    NetworkRemoveRequest network_remove_request = 20;
+    NetworkPruneRequest network_prune_request = 21;
+    NetworkConnectRequest network_connect_request = 22;
+    NetworkDisconnectRequest network_disconnect_request = 23;
+    HostInfoRequest host_info_request = 24;
+    EventStreamSubscribe event_stream_subscribe = 25;
+    EventStreamUnsubscribe event_stream_unsubscribe = 26;
+  }
+}
+
+message ManagerMessage {
+  oneof type {
+    HeartbeatAck heartbeat_ack = 1;
+    ContainerListResponse container_list_response = 2;
+    ContainerInspectResponse container_inspect_response = 3;
+    ContainerActionResponse container_action_response = 4;
+    ContainerCreateResponse container_create_response = 5;
+    ContainerLogsChunk container_logs_chunk = 6;
+    ContainerLogsError container_logs_error = 7;
+    ImageListResponse image_list_response = 8;
+    ImageActionResponse image_action_response = 9;
+    ImagePruneResponse image_prune_response = 10;
+    VolumeListResponse volume_list_response = 11;
+    VolumeActionResponse volume_action_response = 12;
+    VolumePruneResponse volume_prune_response = 13;
+    NetworkListResponse network_list_response = 14;
+    NetworkActionResponse network_action_response = 15;
+    NetworkPruneResponse network_prune_response = 16;
+    HostInfoResponse host_info_response = 17;
+    EventStreamData event_stream_data = 18;
+    EventStreamError event_stream_error = 19;
+    EnrollChallenge enroll_challenge = 20;
+    ErrorResponse error_response = 21;
+  }
+}
+
+message Heartbeat {
+  string request_id = 1;
+  google.protobuf.Timestamp timestamp = 2;
+}
+
+message HeartbeatAck {
+  string request_id = 1;
+  google.protobuf.Timestamp timestamp = 2;
+}
+
+message ContainerListRequest {
+  string request_id = 1;
+  bool all = 2;
+  map<string, string> filters = 3;
+}
+
+message ContainerInspectRequest {
+  string request_id = 1;
+  string container_id = 2;
+}
+
+message ContainerStartRequest {
+  string request_id = 1;
+  string container_id = 2;
+}
+
+message ContainerStopRequest {
+  string request_id = 1;
+  string container_id = 2;
+  int32 timeout_seconds = 3;
+}
+
+message ContainerRestartRequest {
+  string request_id = 1;
+  string container_id = 2;
+  int32 timeout_seconds = 3;
+}
+
+message ContainerRemoveRequest {
+  string request_id = 1;
+  string container_id = 2;
+  bool force = 3;
+  bool remove_volumes = 4;
+}
+
+message ContainerCreateRequest {
+  string request_id = 1;
+  string name = 2;
+  string image = 3;
+  string restart_policy = 4;
+  map<string, string> env = 5;
+  repeated PortMappingRequest ports = 6;
+  repeated VolumeMountRequest volumes = 7;
+  repeated string networks = 8;
+  map<string, string> labels = 9;
+  string hostname = 10;
+  repeated string entrypoint = 11;
+  repeated string command = 12;
+  double cpu_limit = 13;
+  int64 memory_limit = 14;
+}
+
+message ContainerLogsRequest {
+  string request_id = 1;
+  string container_id = 2;
+  bool follow = 3;
+  bool stdout = 4;
+  bool stderr = 5;
+  int32 tail = 6;
+  google.protobuf.Timestamp since = 7;
+  google.protobuf.Timestamp until = 8;
+}
+
+message ContainerListResponse {
+  string request_id = 1;
+  repeated Container containers = 2;
+}
+
+message ContainerInspectResponse {
+  string request_id = 1;
+  ContainerDetail container = 2;
+}
+
+message ContainerActionResponse {
+  string request_id = 1;
+  string container_id = 2;
+  ActionResult result = 3;
+}
+
+message ContainerCreateResponse {
+  string request_id = 1;
+  string container_id = 2;
+  ActionResult result = 3;
+}
+
+message ContainerLogsChunk {
+  string request_id = 1;
+  string container_id = 2;
+  repeated LogEntry entries = 3;
+}
+
+message ContainerLogsError {
+  string request_id = 1;
+  string container_id = 2;
+  string error = 3;
+}
+
+message ImageListRequest {
+  string request_id = 1;
+  bool all = 2;
+  map<string, string> filters = 3;
+}
+
+message ImagePullRequest {
+  string request_id = 1;
+  string image = 2;
+  string tag = 3;
+  string registry = 4;
+}
+
+message ImageRemoveRequest {
+  string request_id = 1;
+  string image_id = 2;
+  bool force = 3;
+}
+
+message ImagePruneRequest {
+  string request_id = 1;
+  bool all = 2;
+  map<string, string> filters = 3;
+}
+
+message ImageListResponse {
+  string request_id = 1;
+  repeated Image images = 2;
+}
+
+message ImageActionResponse {
+  string request_id = 1;
+  string image_id = 2;
+  ActionResult result = 3;
+}
+
+message ImagePruneResponse {
+  string request_id = 1;
+  repeated string images_deleted = 2;
+  int64 space_reclaimed_bytes = 3;
+  ActionResult result = 4;
+}
+
+message VolumeListRequest {
+  string request_id = 1;
+  map<string, string> filters = 2;
+}
+
+message VolumeCreateRequest {
+  string request_id = 1;
+  string name = 2;
+  string driver = 3;
+  map<string, string> labels = 4;
+  map<string, string> options = 5;
+}
+
+message VolumeRemoveRequest {
+  string request_id = 1;
+  string name = 2;
+  bool force = 3;
+}
+
+message VolumePruneRequest {
+  string request_id = 1;
+  map<string, string> filters = 2;
+}
+
+message VolumeListResponse {
+  string request_id = 1;
+  repeated Volume volumes = 2;
+}
+
+message VolumeActionResponse {
+  string request_id = 1;
+  string name = 2;
+  ActionResult result = 3;
+}
+
+message VolumePruneResponse {
+  string request_id = 1;
+  repeated string volumes_deleted = 2;
+  int64 space_reclaimed_bytes = 3;
+  ActionResult result = 4;
+}
+
+message NetworkListRequest {
+  string request_id = 1;
+  map<string, string> filters = 2;
+}
+
+message NetworkCreateRequest {
+  string request_id = 1;
+  string name = 2;
+  string driver = 3;
+  string subnet = 4;
+  string gateway = 5;
+  bool ipv6 = 6;
+  map<string, string> labels = 7;
+  map<string, string> options = 8;
+}
+
+message NetworkRemoveRequest {
+  string request_id = 1;
+  string name = 2;
+  bool force = 3;
+}
+
+message NetworkPruneRequest {
+  string request_id = 1;
+  map<string, string> filters = 2;
+}
+
+message NetworkConnectRequest {
+  string request_id = 1;
+  string network_name = 2;
+  string container_id = 3;
+  string alias = 4;
+}
+
+message NetworkDisconnectRequest {
+  string request_id = 1;
+  string network_name = 2;
+  string container_id = 3;
+  bool force = 4;
+}
+
+message NetworkListResponse {
+  string request_id = 1;
+  repeated Network networks = 2;
+}
+
+message NetworkActionResponse {
+  string request_id = 1;
+  string network_name = 2;
+  string container_id = 3;
+  ActionResult result = 4;
+}
+
+message NetworkPruneResponse {
+  string request_id = 1;
+  repeated string networks_deleted = 2;
+  ActionResult result = 3;
+}
+
+message HostInfoRequest {
+  string request_id = 1;
+}
+
+message HostInfoResponse {
+  string request_id = 1;
+  HostInfo host_info = 2;
+}
+
+message EventStreamSubscribe {
+  string request_id = 1;
+  repeated string event_types = 2;
+}
+
+message EventStreamUnsubscribe {
+  string request_id = 1;
+}
+
+message EventStreamData {
+  string request_id = 1;
+  PodmanEvent event = 2;
+}
+
+message EventStreamError {
+  string request_id = 1;
+  string error = 2;
+}
+
+message EnrollChallenge {
+  string challenge_id = 1;
+  string nonce = 2;
+  google.protobuf.Timestamp expires_at = 3;
+}
+
+message ErrorResponse {
+  string request_id = 1;
+  string code = 2;
+  string message = 3;
+  string details = 4;
+}
+
+message Container {
+  string id = 1;
+  string name = 2;
+  string image = 3;
+  string state = 4;
+  string status = 5;
+  google.protobuf.Timestamp created = 6;
+  repeated PortMapping ports = 7;
+  repeated NetworkInfo networks = 8;
+  repeated MountInfo mounts = 9;
+  map<string, string> labels = 10;
+  string host = 11;
+  string manager = 12;
+  string systemd_unit = 13;
+}
+
+message ContainerDetail {
+  Container container = 1;
+  repeated string env = 2;
+  string hostname = 3;
+  string restart_policy = 4;
+  string network_mode = 5;
+  int64 pid = 6;
+  google.protobuf.Timestamp started_at = 7;
+  google.protobuf.Timestamp finished_at = 8;
+  ContainerStats stats = 9;
+}
+
+message ContainerStats {
+  double cpu_percent = 1;
+  int64 memory_usage_bytes = 2;
+  int64 memory_limit_bytes = 3;
+  double memory_percent = 4;
+  int64 pids = 5;
+  int64 network_input_bytes = 6;
+  int64 network_output_bytes = 7;
+  int64 block_input_bytes = 8;
+  int64 block_output_bytes = 9;
+}
+
+message PortMapping {
+  string host_ip = 1;
+  int32 host_port = 2;
+  int32 container_port = 3;
+  string protocol = 4;
+}
+
+message PortMappingRequest {
+  string host_ip = 1;
+  int32 host_port = 2;
+  int32 container_port = 3;
+  string protocol = 4;
+}
+
+message NetworkInfo {
+  string name = 1;
+  string ip = 2;
+  string gateway = 3;
+  string mac = 4;
+}
+
+message MountInfo {
+  string type = 1;
+  string source = 2;
+  string destination = 3;
+  bool rw = 4;
+}
+
+message VolumeMountRequest {
+  string source = 1;
+  string destination = 2;
+  bool read_only = 3;
+  string type = 4;
+}
+
+message Image {
+  string id = 1;
+  string repository = 2;
+  string tag = 3;
+  string digest = 4;
+  google.protobuf.Timestamp created = 5;
+  string created_ago = 6;
+  int64 size = 7;
+}
+
+message Volume {
+  string name = 1;
+  string driver = 2;
+  string mountpoint = 3;
+  map<string, string> labels = 4;
+  google.protobuf.Timestamp created = 5;
+  string scope = 6;
+}
+
+message Network {
+  string name = 1;
+  string driver = 2;
+  string subnet = 3;
+  string gateway = 4;
+  bool ipv6 = 5;
+  map<string, string> labels = 6;
+  map<string, string> containers = 7;
+}
+
+message HostInfo {
+  string hostname = 1;
+  string os = 2;
+  string kernel = 3;
+  int64 uptime_seconds = 4;
+  int32 cpu_cores = 5;
+  double load_1 = 6;
+  double load_5 = 7;
+  double load_15 = 8;
+  int64 memory_total_bytes = 9;
+  int64 memory_used_bytes = 10;
+  int64 disk_total_bytes = 11;
+  int64 disk_used_bytes = 12;
+  int64 disk_free_bytes = 13;
+  string podman_version = 14;
+  string agent_version = 15;
+}
+
+message ActionResult {
+  bool success = 1;
+  string message = 2;
+  string error = 3;
+}
+
+message PodmanEvent {
+  string host = 1;
+  string event_type = 2;
+  string actor_id = 3;
+  string actor_name = 4;
+  google.protobuf.Timestamp timestamp = 5;
+  map<string, string> attributes = 6;
+}
+
+message LogEntry {
+  google.protobuf.Timestamp timestamp = 1;
+  string message = 2;
+}
+
+message EnrollRequest {
+  string token = 1;
+  string agent_version = 2;
+  string host_id = 3;
+  repeated string capabilities = 4;
+}
+
+message EnrollResponse {
+  bool success = 1;
+  string agent_id = 2;
+  string credential = 3;
+  string error = 4;
+}
