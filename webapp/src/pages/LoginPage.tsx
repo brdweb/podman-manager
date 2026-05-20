@@ -31,7 +31,7 @@ export function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-zinc-950 px-6">
       <div className="w-full max-w-md rounded-3xl border border-zinc-800 bg-zinc-900 p-8 shadow-2xl shadow-black/30">
-        <p className="text-xs uppercase tracking-[0.28em] text-zinc-500">Podman Manager</p>
+        <p className="text-xs uppercase tracking-[0.28em] text-zinc-500">Homelab Control</p>
         <h1 className="mt-3 text-3xl font-semibold text-zinc-100">Sign in</h1>
         <p className="mt-2 text-sm text-zinc-500">
           Enter the admin credentials configured for this standalone deployment.
@@ -39,7 +39,7 @@ export function LoginPage() {
 
         {error && (
           <div className="mt-6 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
-            Failed to contact the Podman Manager API.
+            Failed to contact the Homelab Control API.
           </div>
         )}
 

@@ -4,9 +4,11 @@ import { useQuery } from '@tanstack/react-query';
 import { get } from '../api/client';
 
 const navItems = [
-  { to: '/', label: 'Dashboard' },
+  { to: '/', label: 'Overview' },
+  { to: '/launchpad', label: 'Launchpad' },
+  { to: '/services', label: 'Services' },
+  { to: '/stacks', label: 'Stacks' },
   { to: '/containers', label: 'Containers' },
-  { to: '/hosts', label: 'Volumes' },
   { to: '/images', label: 'Images' },
   { to: '/events', label: 'Events' },
   { to: '/hosts', label: 'Hosts' },
@@ -34,6 +36,10 @@ export function Layout() {
     ? [
         ...navItems,
         {
+          to: `/hosts/${encodeURIComponent(hostName)}/volumes`,
+          label: 'Volumes',
+        },
+        {
           to: `/hosts/${encodeURIComponent(hostName)}/networks`,
           label: 'Networks',
         },
@@ -46,16 +52,16 @@ export function Layout() {
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-6">
           <div className="flex items-center">
           <Link to="/" className="text-lg font-bold tracking-tight mr-8">
-            Podman Manager
+            Homelab Control
           </Link>
           <nav className="flex gap-1">
             {scopedNavItems.filter((item) => !item.adminOnly || isAdmin(session)).map((item) => {
-              const to = item.label === 'Volumes' && hostName
-                ? `/hosts/${encodeURIComponent(hostName)}/volumes`
-                : item.to;
+              const to = item.to;
               const isActive =
                 item.label === 'Volumes'
                   ? /^\/hosts\/[^/]+\/volumes$/.test(location.pathname)
+                : item.label === 'Networks'
+                  ? /^\/hosts\/[^/]+\/networks$/.test(location.pathname)
                 : item.label === 'Hosts'
                   ? location.pathname === '/hosts' || /^\/hosts\/[^/]+$/.test(location.pathname)
                 : item.to === '/'

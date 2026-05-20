@@ -1,10 +1,13 @@
 import { Link } from 'react-router-dom';
+import { OpenClawPanel } from '../components/OpenClawPanel';
 import { useOverview } from '../hooks/useHosts';
+import { useControlOverview } from '../hooks/useControl';
 import { HostCard } from '../components/HostCard';
 import { formatBytes } from '../lib/format';
 
 export function Dashboard() {
   const { data, isLoading, error } = useOverview();
+  const { data: control } = useControlOverview();
 
   if (isLoading) {
     return <LoadingSkeleton />;
@@ -27,24 +30,35 @@ export function Dashboard() {
   const memoryTotal = hosts.reduce((sum, h) => sum + (h.system?.memory_total_bytes ?? 0), 0);
 
   return (
-    <div>
-      <h1 className="text-2xl font-bold mb-6">Dashboard</h1>
+    <div className="space-y-8">
+      <div>
+        <p className="text-sm font-medium uppercase tracking-[0.18em] text-emerald-400">
+          Homelab Control
+        </p>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight">Operations cockpit</h1>
+      </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-4 mb-8">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-5">
         <SummaryCard label="Hosts Online" value={`${onlineHosts}/${hosts.length}`} />
         <SummaryCard label="Containers" value={totalContainers} to="/containers" />
         <SummaryCard label="Running" value={totalRunning} accent="text-emerald-400" />
+        <SummaryCard label="Launchpad Links" value={control?.links ?? '-'} to="/launchpad" />
         <SummaryCard
           label="Memory In Use"
           value={memoryTotal ? `${formatBytes(memoryUsed)} / ${formatBytes(memoryTotal)}` : '-'}
         />
       </div>
 
-      <h2 className="text-lg font-semibold mb-4 text-zinc-300">Hosts</h2>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {hosts.map((host) => (
-          <HostCard key={host.name} host={host} />
-        ))}
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
+        <section>
+          <h2 className="mb-4 text-lg font-semibold text-zinc-300">Hosts</h2>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            {hosts.map((host) => (
+              <HostCard key={host.name} host={host} />
+            ))}
+          </div>
+        </section>
+        <OpenClawPanel />
       </div>
     </div>
   );

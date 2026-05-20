@@ -66,7 +66,7 @@ export function VolumesPage() {
           </div>
           <h1 className="text-2xl font-bold">Volumes</h1>
           <p className="mt-1 text-sm text-zinc-500">
-            Manage persistent Podman volumes and driver metadata on this host.
+            Manage persistent container volumes and driver metadata on this host.
           </p>
         </div>
 
@@ -268,7 +268,7 @@ function CreateVolumeModal({
       <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-zinc-800 bg-zinc-950 p-6 shadow-2xl">
         <h2 className="text-xl font-bold text-zinc-100">Create Volume</h2>
         <p className="mt-2 text-sm text-zinc-400">
-          Define a Podman volume for this host. Labels and driver options are optional.
+          Define a container volume for this host. Labels and driver options are optional.
         </p>
 
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">

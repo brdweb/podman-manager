@@ -65,7 +65,7 @@ export function NetworksPage() {
           </div>
           <h1 className="text-2xl font-bold">Networks</h1>
           <p className="mt-1 text-sm text-zinc-500">
-            Manage Podman networks and address ranges on this host.
+            Manage container networks and address ranges on this host.
           </p>
         </div>
 
@@ -325,7 +325,7 @@ function CreateNetworkModal({
       <div className="w-full max-w-2xl rounded-2xl border border-zinc-800 bg-zinc-950 p-6 shadow-2xl">
         <h2 className="text-xl font-bold text-zinc-100">Create Network</h2>
         <p className="mt-2 text-sm text-zinc-400">
-          Define a Podman network for this host. Subnet and gateway are optional unless you need a fixed address range.
+          Define a container network for this host. Subnet and gateway are optional unless you need a fixed address range.
         </p>
 
         <form onSubmit={handleSubmit} className="mt-6 space-y-4">

@@ -4,6 +4,12 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { Layout } from './components/Layout';
 import { ToastProvider } from './components/Toast';
 import { Dashboard } from './pages/Dashboard';
+import { LaunchpadPage } from './pages/LaunchpadPage';
+import { LinkAdminPage } from './pages/LinkAdminPage';
+import { ServicesPage } from './pages/ServicesPage';
+import { ServiceDetailPage } from './pages/ServiceDetailPage';
+import { StacksPage } from './pages/StacksPage';
+import { WallPage } from './pages/WallPage';
 import { HostList } from './pages/HostList';
 import { HostDetail } from './pages/HostDetail';
 import { ContainersPage } from './pages/ContainersPage';
@@ -38,10 +44,16 @@ export default function App() {
               <Route element={<ProtectedApp />}>
                 <Route element={<Layout />}>
                   <Route path="/" element={<Dashboard />} />
-                <Route path="/containers" element={<ContainersPage />} />
-                <Route path="/images" element={<ImagesPage />} />
-                <Route path="/events" element={<EventsPage />} />
-                <Route path="/hosts" element={<HostList />} />
+                  <Route path="/launchpad" element={<LaunchpadPage />} />
+                  <Route path="/launchpad/admin" element={<LinkAdminPage />} />
+                  <Route path="/services" element={<ServicesPage />} />
+                  <Route path="/services/:serviceId" element={<ServiceDetailPage />} />
+                  <Route path="/stacks" element={<StacksPage />} />
+                  <Route path="/wall" element={<WallPage />} />
+                  <Route path="/containers" element={<ContainersPage />} />
+                  <Route path="/images" element={<ImagesPage />} />
+                  <Route path="/events" element={<EventsPage />} />
+                  <Route path="/hosts" element={<HostList />} />
                   <Route path="/hosts/:hostId/containers/create" element={<CreateContainerPage />} />
                   <Route path="/hosts/:hostId/networks" element={<NetworksPage />} />
                   <Route path="/hosts/:hostId/volumes" element={<VolumesPage />} />
@@ -75,7 +87,7 @@ function ProtectedApp() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-zinc-950 px-6 text-center text-zinc-300">
         <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-6">
-          Failed to contact the Podman Manager API.
+          Failed to contact the Homelab Control API.
         </div>
       </div>
     );

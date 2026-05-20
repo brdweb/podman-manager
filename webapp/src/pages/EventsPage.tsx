@@ -188,7 +188,7 @@ export function EventsPage() {
             <ConnectionBadge status={status} />
           </div>
           <p className="text-sm text-zinc-500">
-            Live Podman activity across hosts, retained in-memory for the latest {MAX_EVENTS} events.
+            Live container engine activity across hosts, retained in-memory for the latest {MAX_EVENTS} events.
           </p>
           {retryDelay && status !== 'paused' && (
             <p className="mt-1 text-xs text-zinc-600">
@@ -287,7 +287,7 @@ export function EventsPage() {
               {!hasAnyEvents ? (
                 <tr>
                   <td colSpan={6} className="px-4 py-16 text-center">
-                    <p className="font-medium text-zinc-300">Waiting for Podman events</p>
+                    <p className="font-medium text-zinc-300">Waiting for container events</p>
                     <p className="mt-1 text-sm text-zinc-500">
                       {status === 'connected'
                         ? 'The stream is connected. New container, image, volume, and network events will appear here.'

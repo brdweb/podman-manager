@@ -1,12 +1,19 @@
 ![Podman Manager](images/podman-manager.png)
 
-# Podman Manager
+# Homelab Control
 
-Multi-host Podman container management with agent-based architecture
+Homelab Control is the next iteration of Podman Manager: a desktop-first homelab cockpit that keeps the existing Go/React/RBAC foundation while adding Docker-first control-plane APIs, a PostgreSQL-capable state store, Homepage-style launchpad links, and integration points for Git-backed Compose, metrics, and OpenClaw.
 
-Podman Manager provides a unified dashboard to monitor and control Podman containers across multiple remote hosts. It uses a lightweight containerized agent installed on each managed host, communicating via gRPC bidirectional streaming for real-time operations, multi-user RBAC, and persistent authentication.
+The current implementation keeps the legacy Podman transport available during the transition, but the new `/api/v1/*` surface and UI are shaped around the Homelab Control plan.
 
 ## Features
+
+### Homelab Control Foundation
+- **Launchpad links** — Homepage-style grouped visual cards with icon slugs, full icon URLs, favicon fallback, admin CRUD, import, and YAML/JSON export
+- **State and audit store** — PostgreSQL-ready state storage with SQLite fallback for local development
+- **v1 API surface** — overview, inventory, services, stacks, links, actions, action streams, and OpenClaw proxy endpoints
+- **Ops cockpit UI** — Overview, Launchpad, Services, Stacks, Wall, and admin link management routes
+- **Homepage import** — imports existing `homepage-config/bookmarks.yaml` and link-style `services.yaml` entries while preserving groups and order
 
 ### Agent-Based Architecture
 - **Containerized agent** — lightweight Podman container installed via Quadlet, zero host dependencies

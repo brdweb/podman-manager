@@ -14,6 +14,7 @@ import (
 	"github.com/brdweb/podman-manager/internal/agent"
 	"github.com/brdweb/podman-manager/internal/auth"
 	"github.com/brdweb/podman-manager/internal/config"
+	"github.com/brdweb/podman-manager/internal/control"
 	"github.com/brdweb/podman-manager/internal/enroll"
 	"github.com/brdweb/podman-manager/internal/host"
 	"github.com/brdweb/podman-manager/internal/podman"
@@ -28,6 +29,7 @@ type Server struct {
 	events            *podman.EventStream
 	mux               *http.ServeMux
 	authStore         *auth.Store
+	controlStore      *control.Store
 	logger            *slog.Logger
 	version           string
 	grpcServer        *agent.Server
@@ -61,10 +63,16 @@ func NewServer(configPath string, cfg *config.Config, logger *slog.Logger, versi
 		authStore.Close()
 		return nil, err
 	}
+	controlStore, err := control.NewStore(context.Background(), cfg.State, configPath, logger)
+	if err != nil {
+		authStore.Close()
+		return nil, err
+	}
 
 	grpcAddress := ":18735"
 	enrollStore, err := enroll.NewPersistentStore(time.Hour, enrollCredentialsPath(configPath, cfg))
 	if err != nil {
+		controlStore.Close()
 		authStore.Close()
 		return nil, err
 	}
@@ -73,6 +81,7 @@ func NewServer(configPath string, cfg *config.Config, logger *slog.Logger, versi
 	agentServer := agent.NewServer(registry, logger, enrollStore)
 	agentGRPCServer, err := agent.StartGRPCServer(grpcAddress, agentServer, logger)
 	if err != nil {
+		controlStore.Close()
 		authStore.Close()
 		return nil, err
 	}
@@ -82,6 +91,7 @@ func NewServer(configPath string, cfg *config.Config, logger *slog.Logger, versi
 		if agentGRPCServer != nil {
 			agentGRPCServer.Stop()
 		}
+		controlStore.Close()
 		authStore.Close()
 		return nil, err
 	}
@@ -91,6 +101,7 @@ func NewServer(configPath string, cfg *config.Config, logger *slog.Logger, versi
 		config:            cfg,
 		hosts:             hosts,
 		authStore:         authStore,
+		controlStore:      controlStore,
 		logger:            logger,
 		version:           version,
 		grpcServer:        agentServer,
@@ -272,6 +283,13 @@ func (s *Server) Close() {
 		s.authStore = nil
 	}
 
+	if s.controlStore != nil {
+		if err := s.controlStore.Close(); err != nil {
+			s.logger.Warn("failed to close control store", "error", err)
+		}
+		s.controlStore = nil
+	}
+
 	s.eventsMu.Lock()
 	for client := range s.eventClients {
 		delete(s.eventClients, client)
@@ -322,6 +340,19 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /api/containers", s.viewerHandler(s.handleAllContainers))
 	s.mux.HandleFunc("GET /api/overview", s.viewerHandler(s.handleOverview))
 	s.mux.HandleFunc("GET /api/events", s.viewerHandler(s.handleEvents))
+	s.mux.HandleFunc("GET /api/v1/overview", s.viewerHandler(s.handleV1Overview))
+	s.mux.HandleFunc("GET /api/v1/inventory", s.viewerHandler(s.handleV1Inventory))
+	s.mux.HandleFunc("GET /api/v1/services/{id}", s.viewerHandler(s.handleV1Service))
+	s.mux.HandleFunc("GET /api/v1/stacks", s.viewerHandler(s.handleV1Stacks))
+	s.mux.HandleFunc("GET /api/v1/links", s.viewerHandler(s.handleListLinks))
+	s.mux.HandleFunc("POST /api/v1/links", s.adminHandler(s.handleCreateLink))
+	s.mux.HandleFunc("PUT /api/v1/links/{id}", s.adminHandler(s.handleUpdateLink))
+	s.mux.HandleFunc("DELETE /api/v1/links/{id}", s.adminHandler(s.handleDeleteLink))
+	s.mux.HandleFunc("POST /api/v1/links/import-homepage", s.adminHandler(s.handleImportHomepageLinks))
+	s.mux.HandleFunc("GET /api/v1/links/export", s.viewerHandler(s.handleExportLinks))
+	s.mux.HandleFunc("POST /api/v1/actions", s.operatorHandler(s.handleCreateAction))
+	s.mux.HandleFunc("GET /api/v1/actions/{id}/stream", s.viewerHandler(s.handleActionStream))
+	s.mux.HandleFunc("POST /api/v1/chat/openclaw", s.viewerHandler(s.handleOpenClawChat))
 }
 
 func (s *Server) hostsSnapshot() *host.HostManager {

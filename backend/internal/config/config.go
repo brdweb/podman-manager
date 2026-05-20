@@ -11,12 +11,15 @@ import (
 )
 
 type Config struct {
-	Server             ServerConfig  `yaml:"server"`
-	SSH                SSHConfig     `yaml:"ssh"`
-	Hosts              []HostConfig  `yaml:"hosts"`
-	Auth               AuthConfig    `yaml:"auth,omitempty"`
-	EnableEventsStream bool          `yaml:"enable_events_stream"`
-	CacheTTL           time.Duration `yaml:"cache_ttl,omitempty"`
+	Server             ServerConfig         `yaml:"server"`
+	SSH                SSHConfig            `yaml:"ssh"`
+	Hosts              []HostConfig         `yaml:"hosts"`
+	Auth               AuthConfig           `yaml:"auth,omitempty"`
+	State              StateConfig          `yaml:"state,omitempty"`
+	HomepageImport     HomepageImportConfig `yaml:"homepage_import,omitempty"`
+	Integrations       IntegrationsConfig   `yaml:"integrations,omitempty"`
+	EnableEventsStream bool                 `yaml:"enable_events_stream"`
+	CacheTTL           time.Duration        `yaml:"cache_ttl,omitempty"`
 }
 
 type ServerConfig struct {
@@ -96,6 +99,27 @@ type AuthConfig struct {
 	SessionTTL   time.Duration `yaml:"session_ttl,omitempty"`
 }
 
+type StateConfig struct {
+	Driver     string `yaml:"driver,omitempty"`
+	DSN        string `yaml:"dsn,omitempty"`
+	SQLitePath string `yaml:"sqlite_path,omitempty"`
+}
+
+type HomepageImportConfig struct {
+	BookmarksPath string `yaml:"bookmarks_path,omitempty"`
+	ServicesPath  string `yaml:"services_path,omitempty"`
+}
+
+type IntegrationsConfig struct {
+	OpenClaw OpenClawConfig `yaml:"openclaw,omitempty"`
+}
+
+type OpenClawConfig struct {
+	URL      string `yaml:"url,omitempty"`
+	ChatPath string `yaml:"chat_path,omitempty"`
+	TokenEnv string `yaml:"token_env,omitempty"`
+}
+
 func (h HostConfig) IsRootful() bool {
 	return h.Mode == "rootful"
 }
@@ -161,6 +185,20 @@ func defaultConfig() *Config {
 		},
 		Auth: AuthConfig{
 			SessionTTL: 12 * time.Hour,
+		},
+		State: StateConfig{
+			Driver: "sqlite",
+		},
+		HomepageImport: HomepageImportConfig{
+			BookmarksPath: "../homelab/homepage-config/bookmarks.yaml",
+			ServicesPath:  "../homelab/homepage-config/services.yaml",
+		},
+		Integrations: IntegrationsConfig{
+			OpenClaw: OpenClawConfig{
+				URL:      "http://192.168.40.80:18789",
+				ChatPath: "/api/chat",
+				TokenEnv: "OPENCLAW_GATEWAY_TOKEN",
+			},
 		},
 		EnableEventsStream: true,
 		CacheTTL:           3 * time.Second,
@@ -249,6 +287,30 @@ func (c *Config) Validate() error {
 
 	if c.CacheTTL <= 0 {
 		c.CacheTTL = 3 * time.Second
+	}
+
+	c.State.Driver = strings.ToLower(strings.TrimSpace(c.State.Driver))
+	if c.State.Driver == "" {
+		if strings.TrimSpace(c.State.DSN) != "" {
+			c.State.Driver = "postgres"
+		} else {
+			c.State.Driver = "sqlite"
+		}
+	}
+	switch c.State.Driver {
+	case "sqlite", "postgres":
+	default:
+		return fmt.Errorf("state.driver must be 'sqlite' or 'postgres', got '%s'", c.State.Driver)
+	}
+	if c.State.Driver == "postgres" && strings.TrimSpace(c.State.DSN) == "" {
+		return fmt.Errorf("state.dsn is required when state.driver is 'postgres'")
+	}
+
+	if c.Integrations.OpenClaw.ChatPath == "" {
+		c.Integrations.OpenClaw.ChatPath = "/api/chat"
+	}
+	if c.Integrations.OpenClaw.TokenEnv == "" {
+		c.Integrations.OpenClaw.TokenEnv = "OPENCLAW_GATEWAY_TOKEN"
 	}
 
 	return nil

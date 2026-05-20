@@ -74,7 +74,7 @@ export function UsersPage() {
         <div>
           <h1 className="text-2xl font-bold">User Management</h1>
           <p className="mt-1 text-sm text-zinc-500">
-            Create accounts, assign roles, and maintain access to Podman Manager.
+            Create accounts, assign roles, and maintain access to Homelab Control.
           </p>
         </div>
         <button
@@ -375,7 +375,7 @@ function DeleteUserModal({
   return (
     <Modal title="Delete User" description="This action cannot be undone.">
       <p className="mt-4 text-sm text-zinc-400">
-        Delete <span className="font-mono text-zinc-200">{user.username}</span> from Podman Manager?
+        Delete <span className="font-mono text-zinc-200">{user.username}</span> from Homelab Control?
       </p>
       <div className="mt-6 flex justify-end gap-3">
         <button

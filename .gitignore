@@ -11,6 +11,10 @@ backend/bin/
 *.test
 *.out
 coverage.html
+*.db
+*.db-shm
+*.db-wal
+*.log
 
 # Go workspace
 go.work.sum

@@ -33,7 +33,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     return (
       <div className="flex min-h-screen items-center justify-center bg-zinc-950 px-6 py-12 text-zinc-100">
         <div className="w-full max-w-2xl rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl shadow-black/30">
-          <p className="text-xs uppercase tracking-[0.28em] text-zinc-500">Podman Manager</p>
+          <p className="text-xs uppercase tracking-[0.28em] text-zinc-500">Homelab Control</p>
           <h1 className="mt-3 text-2xl font-bold text-zinc-100">Something went wrong</h1>
           <p className="mt-2 text-sm text-zinc-400">
             The app ran into an unexpected rendering error. Reloading the page usually restores the
