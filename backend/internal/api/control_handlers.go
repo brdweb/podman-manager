@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/brdweb/podman-manager/internal/auth"
-	"github.com/brdweb/podman-manager/internal/control"
+	"github.com/brdweb/homelab-control/internal/auth"
+	"github.com/brdweb/homelab-control/internal/control"
 	"gopkg.in/yaml.v3"
 )
 

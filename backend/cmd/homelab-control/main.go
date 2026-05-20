@@ -11,8 +11,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/brdweb/podman-manager/internal/api"
-	"github.com/brdweb/podman-manager/internal/config"
+	"github.com/brdweb/homelab-control/internal/api"
+	"github.com/brdweb/homelab-control/internal/config"
 )
 
 var version = "2026.05.01"
@@ -23,7 +23,7 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Println("podman-manager", version)
+		fmt.Println("homelab-control", version)
 		os.Exit(0)
 	}
 
@@ -36,7 +36,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	logger.Info("podman-manager starting", "version", version)
+	logger.Info("homelab-control starting", "version", version)
 	logger.Info("configured hosts", "count", len(cfg.Hosts))
 	for _, h := range cfg.Hosts {
 		logger.Info("configured host", "name", h.Name, "user", h.User, "address", h.Address, "mode", h.Mode)
@@ -79,5 +79,5 @@ func main() {
 	}
 
 	server.Close()
-	logger.Info("podman-manager stopped")
+	logger.Info("homelab-control stopped")
 }

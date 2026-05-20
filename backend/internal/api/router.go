@@ -11,13 +11,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/brdweb/podman-manager/internal/agent"
-	"github.com/brdweb/podman-manager/internal/auth"
-	"github.com/brdweb/podman-manager/internal/config"
-	"github.com/brdweb/podman-manager/internal/control"
-	"github.com/brdweb/podman-manager/internal/enroll"
-	"github.com/brdweb/podman-manager/internal/host"
-	"github.com/brdweb/podman-manager/internal/podman"
+	"github.com/brdweb/homelab-control/internal/agent"
+	"github.com/brdweb/homelab-control/internal/auth"
+	"github.com/brdweb/homelab-control/internal/config"
+	"github.com/brdweb/homelab-control/internal/control"
+	"github.com/brdweb/homelab-control/internal/enroll"
+	"github.com/brdweb/homelab-control/internal/host"
+	"github.com/brdweb/homelab-control/internal/podman"
 	"google.golang.org/grpc"
 )
 
@@ -138,13 +138,13 @@ func authDBPath(configPath string, cfg *config.Config) string {
 		return config.ExpandPath(cfg.Server.AuthDBPath)
 	}
 	normalizedConfigPath := strings.ReplaceAll(filepath.Clean(configPath), "\\", "/")
-	if configPath == "" || normalizedConfigPath == "/etc/podman-manager/config.yaml" {
-		return "/var/lib/podman-manager/auth.db"
+	if configPath == "" || normalizedConfigPath == "/etc/homelab-control/config.yaml" || normalizedConfigPath == "/etc/podman-manager/config.yaml" {
+		return "/var/lib/homelab-control/auth.db"
 	}
 	if configPath != "" {
 		return filepath.Join(filepath.Dir(configPath), "auth.db")
 	}
-	return "/var/lib/podman-manager/auth.db"
+	return "/var/lib/homelab-control/auth.db"
 }
 
 func enrollCredentialsPath(configPath string, cfg *config.Config) string {

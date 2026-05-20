@@ -1,8 +1,8 @@
-![Podman Manager](images/podman-manager.png)
+![Homelab Control](images/homelab-control.png)
 
 # Homelab Control
 
-Homelab Control is the next iteration of Podman Manager: a desktop-first homelab cockpit that keeps the existing Go/React/RBAC foundation while adding Docker-first control-plane APIs, a PostgreSQL-capable state store, Homepage-style launchpad links, and integration points for Git-backed Compose, metrics, and OpenClaw.
+Homelab Control is the renamed and refactored successor to the original Podman Manager codebase: a desktop-first homelab cockpit that keeps the existing Go/React/RBAC foundation while adding Docker-first control-plane APIs, a PostgreSQL-capable state store, Homepage-style launchpad links, and integration points for Git-backed Compose, metrics, and OpenClaw.
 
 The current implementation keeps the legacy Podman transport available during the transition, but the new `/api/v1/*` surface and UI are shaped around the Homelab Control plan.
 
@@ -116,14 +116,14 @@ Install the agent on each Podman host you want to manage:
 
 ```bash
 # Rootful installation
-curl -sSL https://raw.githubusercontent.com/brdweb/podman-manager/main/agent/install/install.sh | sudo bash -s -- --token YOUR_ENROLLMENT_TOKEN --manager manager.example.com:18735
+curl -sSL https://raw.githubusercontent.com/brdweb/homelab-control/main/agent/install/install.sh | sudo bash -s -- --token YOUR_ENROLLMENT_TOKEN --manager-url manager.example.com:18735
 
 # Rootless installation
-curl -sSL https://raw.githubusercontent.com/brdweb/podman-manager/main/agent/install/install.sh | bash -s -- --token YOUR_ENROLLMENT_TOKEN --manager manager.example.com:18735
+curl -sSL https://raw.githubusercontent.com/brdweb/homelab-control/main/agent/install/install.sh | bash -s -- --token YOUR_ENROLLMENT_TOKEN --manager-url manager.example.com:18735
 ```
 
 The installer:
-1. Creates a Quadlet `.container` file at `/etc/containers/systemd/podman-agent.container`
+1. Creates a Quadlet `.container` file at `/etc/containers/systemd/homelab-control-agent.container`
 2. Mounts the Podman socket (auto-detects rootful or rootless path)
 3. Starts the agent as a systemd-managed container
 4. The agent connects to the manager and enrolls using the provided token
@@ -133,7 +133,7 @@ The installer:
 The backend uses a YAML configuration file to define the API server settings and authentication.
 
 ```yaml
-# Podman Manager Configuration
+# Homelab Control Configuration
 
 server:
   # Port for the REST API server
@@ -148,7 +148,7 @@ agent:
 # SQLite auth database
 auth:
   enabled: true
-  db_path: "/etc/podman-manager/auth.db"
+  db_path: "/etc/homelab-control/auth.db"
 
 # Enable real-time event streaming via WebSocket
 enable_events_stream: true
@@ -165,7 +165,7 @@ local_auth:
 - **server**: Defines the API port and bind address. Use `127.0.0.1` if the frontend is on the same machine.
 - **agent**: gRPC server port for agent connections (default 18735).
 - **auth**: SQLite-backed multi-user authentication.
-  - `db_path`: Path to the SQLite database (default `/etc/podman-manager/auth.db`).
+  - `db_path`: Path to the SQLite database (default `/etc/homelab-control/auth.db`).
 - **enable_events_stream**: Enable WebSocket-based real-time container events.
 - **local_auth**: Legacy single-user authentication (deprecated, use multi-user auth instead).
 
@@ -180,9 +180,9 @@ local_auth:
 ## Project Structure
 
 ```
-podman-manager/
+homelab-control/
 ├── backend/                     # Go REST API server
-│   ├── cmd/podman-manager/      # Entry point
+│   ├── cmd/homelab-control/      # Entry point
 │   ├── internal/api/            # HTTP handlers, router, RBAC middleware
 │   ├── internal/agent/          # gRPC server, agent registry, transport bridge
 │   ├── internal/auth/           # SQLite user/session store
@@ -303,11 +303,11 @@ The dev server starts at `http://localhost:5173` and proxies `/api` requests to 
 ### Production (Podman)
 
 ```bash
-podman build -f webapp/Dockerfile -t podman-manager .
+podman build -f webapp/Dockerfile -t homelab-control .
 podman run --rm -p 8080:80 \
-  -v ./webapp/config.yaml:/etc/podman-manager/config.yaml:ro \
+  -v ./webapp/config.yaml:/etc/homelab-control/config.yaml:ro \
   -v ~/.ssh/id_ed25519:/root/.ssh/id_ed25519:ro \
-  podman-manager
+  homelab-control
 ```
 
 This builds and starts a single container image that runs both the Go backend and nginx-served webapp on port 8080.
@@ -323,7 +323,7 @@ This builds and starts a single container image that runs both the Go backend an
 
 Build the standalone container image:
 ```bash
-podman build -f webapp/Dockerfile -t podman-manager .
+podman build -f webapp/Dockerfile -t homelab-control .
 ```
 
 ### Running Tests
@@ -335,11 +335,11 @@ cd backend && go vet ./...
 
 ## Versioning
 
-Podman Manager uses date-based versioning (YYYY.MM.DD format). The version is:
+Homelab Control uses date-based versioning (YYYY.MM.DD format). The version is:
 
 - Embedded in both the manager and agent binaries at build time via `-ldflags`
 - Displayed in the webapp header
-- Printed with `podman-manager -version` and `podman-agent -version`
+- Printed with `homelab-control -version` and `homelab-agent -version`
 
 ## Contributing
 

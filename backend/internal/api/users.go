@@ -9,7 +9,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/brdweb/podman-manager/internal/auth"
+	"github.com/brdweb/homelab-control/internal/auth"
 )
 
 type userCreateRequest struct {

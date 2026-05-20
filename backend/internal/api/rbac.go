@@ -3,7 +3,7 @@ package api
 import (
 	"net/http"
 
-	"github.com/brdweb/podman-manager/internal/auth"
+	"github.com/brdweb/homelab-control/internal/auth"
 )
 
 // contextKey is the type for context values.

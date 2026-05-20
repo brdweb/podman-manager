@@ -11,8 +11,8 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
-	"github.com/brdweb/podman-manager/internal/config"
-	"github.com/brdweb/podman-manager/internal/podman"
+	"github.com/brdweb/homelab-control/internal/config"
+	"github.com/brdweb/homelab-control/internal/podman"
 )
 
 type configResponse struct {
@@ -167,7 +167,7 @@ func (s *Server) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 }
 
 func getTempDir() string {
-	if dir := os.Getenv("PODMAN_MANAGER_TEMP_DIR"); dir != "" {
+	if dir := os.Getenv("HOMELAB_CONTROL_TEMP_DIR"); dir != "" {
 		return dir
 	}
 	return "/tmp"
@@ -179,7 +179,7 @@ func writeConfigAtomically(path string, data []byte) error {
 		dir = getTempDir()
 	}
 
-	tmp, err := os.CreateTemp(dir, "podman-manager-*.yaml")
+	tmp, err := os.CreateTemp(dir, "homelab-control-*.yaml")
 	if err != nil {
 		return fmt.Errorf("creating temp config file: %w", err)
 	}

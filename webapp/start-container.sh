@@ -2,7 +2,7 @@
 
 set -eu
 
-CONFIG_PATH="${PODMAN_MANAGER_CONFIG:-/etc/podman-manager/config.yaml}"
+CONFIG_PATH="${HOMELAB_CONTROL_CONFIG:-/etc/homelab-control/config.yaml}"
 
 backend_pid=""
 nginx_pid=""
@@ -18,7 +18,7 @@ cleanup() {
 
 trap cleanup INT TERM
 
-/usr/local/bin/podman-manager --config "$CONFIG_PATH" &
+/usr/local/bin/homelab-control --config "$CONFIG_PATH" &
 backend_pid=$!
 
 nginx -g 'daemon off;' &

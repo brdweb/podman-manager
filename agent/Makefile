@@ -1,12 +1,12 @@
 VERSION ?= dev
 
 build:
-	CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=$(VERSION)" -o podman-agent ./cmd/agent
+	CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=$(VERSION)" -o homelab-agent ./cmd/agent
 
 run: build
-	./podman-agent --config config.yaml
+	./homelab-agent --config config.yaml
 
 clean:
-	rm -f podman-agent
+	rm -f homelab-agent
 
 .PHONY: build run clean

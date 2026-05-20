@@ -1,6 +1,6 @@
-BINARY_NAME := podman-manager
+BINARY_NAME := homelab-control
 BUILD_DIR := bin
-CMD_DIR := cmd/podman-manager
+CMD_DIR := cmd/homelab-control
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS := -s -w -X main.version=$(VERSION)
 

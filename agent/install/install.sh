@@ -2,10 +2,10 @@
 
 set -euo pipefail
 
-AGENT_NAME="podman-manager-agent"
+AGENT_NAME="homelab-control-agent"
 SERVICE_NAME="${AGENT_NAME}.service"
 CONTAINER_FILE="${AGENT_NAME}.container"
-DEFAULT_IMAGE="ghcr.io/brdweb/podman-manager/agent:latest"
+DEFAULT_IMAGE="ghcr.io/brdweb/homelab-control/agent:latest"
 
 MANAGER_URL=""
 TOKEN=""
@@ -50,7 +50,7 @@ die() {
 
 usage() {
   cat <<'EOF'
-Install the Podman Manager agent as a Quadlet-managed Podman container.
+Install the Homelab Control agent as a Quadlet-managed Podman container.
 
 Usage:
   install.sh --manager-url URL --token TOKEN [--rootless] [--image IMAGE] [--dry-run]
@@ -59,7 +59,7 @@ Options:
   --manager-url URL  Manager URL the agent should connect to. Required.
   --token TOKEN      Agent registration/authentication token. Required.
   --rootless         Install as the current user with systemd --user.
-  --image IMAGE      Agent image to run. Defaults to ghcr.io/brdweb/podman-manager/agent:latest.
+  --image IMAGE      Agent image to run. Defaults to ghcr.io/brdweb/homelab-control/agent:latest.
   --dry-run          Print planned actions and rendered Quadlet without changing the system.
   -h, --help         Show this help text.
 EOF
@@ -134,15 +134,15 @@ check_prerequisites() {
 rootful_template() {
   cat <<'EOF'
 [Unit]
-Description=Podman Manager Agent
+Description=Homelab Control Agent
 After=podman.service
 Requires=podman.service
 
 [Container]
-Image=ghcr.io/brdweb/podman-manager/agent:latest
+Image=ghcr.io/brdweb/homelab-control/agent:latest
 Pull=newer
-ContainerName=podman-manager-agent
-Volume=/etc/podman-agent:/etc/podman-agent:Z
+ContainerName=homelab-control-agent
+Volume=/etc/homelab-agent:/etc/homelab-agent:Z
 Volume=/run/podman/podman.sock:/run/podman/podman.sock
 Volume=/etc/containers/systemd:/etc/containers/systemd:ro
 Volume=/proc:/host/proc:ro
@@ -166,14 +166,14 @@ EOF
 rootless_template() {
   cat <<'EOF'
 [Unit]
-Description=Podman Manager Agent (Rootless)
+Description=Homelab Control Agent (Rootless)
 After=podman.service
 
 [Container]
-Image=ghcr.io/brdweb/podman-manager/agent:latest
+Image=ghcr.io/brdweb/homelab-control/agent:latest
 Pull=newer
-ContainerName=podman-manager-agent
-Volume=__HOME__/.config/podman-agent:/etc/podman-agent:Z
+ContainerName=homelab-control-agent
+Volume=__HOME__/.config/homelab-agent:/etc/homelab-agent:Z
 Volume=%t/podman/podman.sock:/run/podman/podman.sock
 Volume=__HOME__/.config/containers/systemd:/etc/containers/systemd:ro
 Volume=/proc:/host/proc:ro
@@ -277,7 +277,7 @@ confirm_update() {
 
   if [[ -t 0 && -r /dev/tty ]]; then
     local answer
-    printf 'Update the existing Podman Manager agent installation? [y/N] ' > /dev/tty
+    printf 'Update the existing Homelab Control agent installation? [y/N] ' > /dev/tty
     read -r answer < /dev/tty || answer=""
     case "$answer" in
       y|Y|yes|YES) return 0 ;;
@@ -298,9 +298,9 @@ write_quadlet() {
 
   info "Writing Quadlet file to $quadlet_path"
   if [[ "$ROOTLESS" == true ]]; then
-    agent_config_dir="$HOME/.config/podman-agent"
+    agent_config_dir="$HOME/.config/homelab-agent"
   else
-    agent_config_dir="/etc/podman-agent"
+    agent_config_dir="/etc/homelab-agent"
   fi
 
   if [[ "$DRY_RUN" == true ]]; then

@@ -22,13 +22,13 @@ import (
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/brdweb/podman-manager/agent/internal/config"
-	"github.com/brdweb/podman-manager/agent/internal/podman"
-	agentpb "github.com/brdweb/podman-manager/agent/proto"
+	"github.com/brdweb/homelab-control/agent/internal/config"
+	"github.com/brdweb/homelab-control/agent/internal/podman"
+	agentpb "github.com/brdweb/homelab-control/agent/proto"
 	"google.golang.org/grpc/metadata"
 )
 
-// Manager manages the connection to the Podman Manager.
+// Manager manages the connection to the Homelab Control.
 type Manager struct {
 	mu       sync.Mutex
 	conn     *grpc.ClientConn

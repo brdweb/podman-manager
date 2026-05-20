@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"time"
 
-	authpkg "github.com/brdweb/podman-manager/internal/auth"
+	authpkg "github.com/brdweb/homelab-control/internal/auth"
 )
 
-const sessionCookieName = "podman_manager_session"
+const sessionCookieName = "homelab_control_session"
 
 type sessionResponse struct {
 	Enabled       bool   `json:"enabled"`

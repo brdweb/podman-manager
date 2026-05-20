@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/brdweb/podman-manager/internal/config"
+	"github.com/brdweb/homelab-control/internal/config"
 )
 
 func TestImportHomepagePreservesGroupsAndIcons(t *testing.T) {

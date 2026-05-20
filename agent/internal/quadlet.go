@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/brdweb/podman-manager/agent/internal/podman"
+	"github.com/brdweb/homelab-control/agent/internal/podman"
 )
 
 // QuadletContainer represents a discovered Quadlet container definition.

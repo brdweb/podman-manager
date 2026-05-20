@@ -1,6 +1,6 @@
-# Podman Manager Agent Install
+# Homelab Control Agent Install
 
-This directory contains the Quadlet templates and `curl | bash` installer for running the Podman Manager agent as a Podman container managed by systemd.
+This directory contains the Quadlet templates and `curl | bash` installer for running the Homelab Control agent as a Podman container managed by systemd.
 
 ## Prerequisites
 
@@ -35,7 +35,7 @@ Install with a custom image:
 curl -sL https://manager:18734/api/agent/install.sh | bash -s -- \
   --manager-url https://manager:18735 \
   --token abc123 \
-  --image registry.example.com/podman-manager/agent:v1.2.3
+  --image registry.example.com/homelab-control/agent:v1.2.3
 ```
 
 Preview the install without writing files or starting services:
@@ -49,9 +49,9 @@ curl -sL https://manager:18734/api/agent/install.sh | bash -s -- \
 
 ## Rootful vs rootless
 
-Rootful mode installs the Quadlet file at `/etc/containers/systemd/podman-manager-agent.container` and manages `podman-manager-agent.service` through the system systemd instance. It mounts the rootful Podman socket from `/run/podman/podman.sock`.
+Rootful mode installs the Quadlet file at `/etc/containers/systemd/homelab-control-agent.container` and manages `homelab-control-agent.service` through the system systemd instance. It mounts the rootful Podman socket from `/run/podman/podman.sock`.
 
-Rootless mode installs the Quadlet file at `$HOME/.config/containers/systemd/podman-manager-agent.container` and manages `podman-manager-agent.service` through `systemctl --user`. It mounts the rootless Podman socket from `%t/podman/podman.sock` and enables systemd linger so the user service can start on boot without an active login session.
+Rootless mode installs the Quadlet file at `$HOME/.config/containers/systemd/homelab-control-agent.container` and manages `homelab-control-agent.service` through `systemctl --user`. It mounts the rootless Podman socket from `%t/podman/podman.sock` and enables systemd linger so the user service can start on boot without an active login session.
 
 Use rootful mode when the agent should manage rootful Podman containers. Use rootless mode when the agent should manage containers owned by the current user.
 
@@ -61,7 +61,7 @@ Use rootful mode when the agent should manage rootful Podman containers. Use roo
 - `quadlet-rootless.container` - template for rootless user installs
 - `install.sh` - installer that renders the appropriate template and starts the systemd service
 
-The installer writes the rendered Quadlet as `podman-manager-agent.container` and starts `podman-manager-agent.service`.
+The installer writes the rendered Quadlet as `homelab-control-agent.container` and starts `homelab-control-agent.service`.
 
 ## Updating
 
@@ -72,16 +72,16 @@ Run the same install command again with the new manager URL, token, or image. Th
 Rootful uninstall:
 
 ```bash
-sudo systemctl disable --now podman-manager-agent.service
-sudo rm -f /etc/containers/systemd/podman-manager-agent.container
+sudo systemctl disable --now homelab-control-agent.service
+sudo rm -f /etc/containers/systemd/homelab-control-agent.container
 sudo systemctl daemon-reload
 ```
 
 Rootless uninstall:
 
 ```bash
-systemctl --user disable --now podman-manager-agent.service
-rm -f "$HOME/.config/containers/systemd/podman-manager-agent.container"
+systemctl --user disable --now homelab-control-agent.service
+rm -f "$HOME/.config/containers/systemd/homelab-control-agent.container"
 systemctl --user daemon-reload
 ```
 
@@ -96,25 +96,25 @@ loginctl disable-linger "$USER"
 Check service status:
 
 ```bash
-sudo systemctl status podman-manager-agent.service --no-pager
+sudo systemctl status homelab-control-agent.service --no-pager
 ```
 
 For rootless installs:
 
 ```bash
-systemctl --user status podman-manager-agent.service --no-pager
+systemctl --user status homelab-control-agent.service --no-pager
 ```
 
 View logs:
 
 ```bash
-sudo journalctl -u podman-manager-agent.service -f
+sudo journalctl -u homelab-control-agent.service -f
 ```
 
 For rootless installs:
 
 ```bash
-journalctl --user -u podman-manager-agent.service -f
+journalctl --user -u homelab-control-agent.service -f
 ```
 
 Common issues:

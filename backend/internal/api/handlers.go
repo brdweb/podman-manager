@@ -13,7 +13,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	"github.com/brdweb/podman-manager/internal/host"
+	"github.com/brdweb/homelab-control/internal/host"
 	xwebsocket "golang.org/x/net/websocket"
 )
 

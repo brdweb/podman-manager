@@ -1,10 +1,10 @@
 services:
-  podman-manager:
+  homelab-control:
     build:
       context: ..
       dockerfile: ./webapp/Dockerfile
     ports:
       - "8080:80"
     volumes:
-      - ./config.yaml:/etc/podman-manager/config.yaml
+      - ./config.yaml:/etc/homelab-control/config.yaml
       - ~/.ssh/id_ed25519:/root/.ssh/id_ed25519:ro

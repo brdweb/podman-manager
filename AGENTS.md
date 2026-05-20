@@ -1,4 +1,4 @@
-# Agent Guidelines for Podman Manager
+# Agent Guidelines for Homelab Control
 
 ## Commit Messages
 
@@ -9,7 +9,7 @@
 
 ## Project Context
 
-Podman Manager is a multi-host Podman container management tool with:
+Homelab Control is a multi-host Podman container management tool with:
 
 - **Shared Go backend** (`backend/`) — REST API server connecting to remote hosts via SSH
 - **Web application** (`webapp/`) — Modern React+Vite standalone web interface

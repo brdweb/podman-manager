@@ -1,8 +1,8 @@
-# Podman Manager Implementation Plan
+# Homelab Control Implementation Plan
 
 ## Goals
 
-Stabilize the current Podman Manager codebase, align documented behavior with implemented behavior, and prepare the standalone app for iterative feature work.
+Stabilize the current Homelab Control codebase, align documented behavior with implemented behavior, and prepare the standalone app for iterative feature work.
 
 ## Phase 0: Local environment and verification baseline
 

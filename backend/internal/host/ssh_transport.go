@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/brdweb/podman-manager/internal/config"
-	"github.com/brdweb/podman-manager/internal/podman"
+	"github.com/brdweb/homelab-control/internal/config"
+	"github.com/brdweb/homelab-control/internal/podman"
 )
 
 type SSHTransport struct {

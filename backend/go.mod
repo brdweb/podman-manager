@@ -1,4 +1,4 @@
-module github.com/brdweb/podman-manager
+module github.com/brdweb/homelab-control
 
 go 1.26.2
 

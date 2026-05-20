@@ -12,7 +12,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/brdweb/podman-manager/internal/config"
+	"github.com/brdweb/homelab-control/internal/config"
 	"github.com/google/uuid"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	_ "modernc.org/sqlite"
@@ -133,7 +133,7 @@ func NewStore(ctx context.Context, cfg config.StateConfig, configPath string, lo
 
 func defaultSQLitePath(configPath string) string {
 	normalized := strings.ReplaceAll(filepath.Clean(configPath), "\\", "/")
-	if configPath == "" || normalized == "/etc/podman-manager/config.yaml" || normalized == "/etc/homelab-control/config.yaml" {
+	if configPath == "" || normalized == "/etc/homelab-control/config.yaml" || normalized == "/etc/podman-manager/config.yaml" {
 		return "/var/lib/homelab-control/control.db"
 	}
 	return filepath.Join(filepath.Dir(configPath), "control.db")

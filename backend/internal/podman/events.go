@@ -13,7 +13,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-	"github.com/brdweb/podman-manager/internal/config"
+	"github.com/brdweb/homelab-control/internal/config"
 )
 
 type PodmanEvent struct {

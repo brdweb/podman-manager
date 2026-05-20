@@ -1,0 +1,20 @@
+[Unit]
+Description=Homelab Control
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+ContainerName=homelab-control
+Image=ghcr.io/brdweb/homelab-control:latest
+Pull=newer
+Volume=/etc/homelab-control/config.yaml:/etc/homelab-control/config.yaml
+Volume=/opt/homelab-control/data:/var/lib/homelab-control
+Volume=/etc/homelab-control/id_ed25519:/root/.ssh/id_ed25519:ro
+PublishPort=18780:80
+PublishPort=18735:18735
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

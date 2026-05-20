@@ -5935,7 +5935,7 @@ const file_agent_proto_rawDesc = "" +
 	"\x05error\x18\x04 \x01(\tR\x05error2\x80\x01\n" +
 	"\fAgentService\x129\n" +
 	"\aConnect\x12\x13.agent.AgentMessage\x1a\x15.agent.ManagerMessage(\x010\x01\x125\n" +
-	"\x06Enroll\x12\x14.agent.EnrollRequest\x1a\x15.agent.EnrollResponseB6Z4github.com/brdweb/podman-manager/agent/proto;agentpbb\x06proto3"
+	"\x06Enroll\x12\x14.agent.EnrollRequest\x1a\x15.agent.EnrollResponseB7Z5github.com/brdweb/homelab-control/agent/proto;agentpbb\x06proto3"
 
 var (
 	file_agent_proto_rawDescOnce sync.Once

@@ -14,8 +14,8 @@ import (
 	"sync"
 	"time"
 
-	agentpb "github.com/brdweb/podman-manager/agent/proto"
-	"github.com/brdweb/podman-manager/internal/enroll"
+	agentpb "github.com/brdweb/homelab-control/agent/proto"
+	"github.com/brdweb/homelab-control/internal/enroll"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"

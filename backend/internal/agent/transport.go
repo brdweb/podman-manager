@@ -7,8 +7,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	agentpb "github.com/brdweb/podman-manager/agent/proto"
-	"github.com/brdweb/podman-manager/internal/host"
+	agentpb "github.com/brdweb/homelab-control/agent/proto"
+	"github.com/brdweb/homelab-control/internal/host"
 )
 
 // AgentTransport implements host.Transport for agent-connected hosts.

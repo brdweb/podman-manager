@@ -1,4 +1,4 @@
-name: Release Podman Manager
+name: Release Homelab Control
 
 on:
   push:
@@ -41,13 +41,13 @@ jobs:
         run: |
           cd backend
           mkdir -p bin
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X main.version=${{ env.VERSION }}" -o bin/podman-manager-linux-amd64 ./cmd/podman-manager
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-X main.version=${{ env.VERSION }}" -o bin/homelab-control-linux-amd64 ./cmd/homelab-control
 
       - name: Build agent binary
         run: |
           cd agent
           mkdir -p bin
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-s -w -X main.version=${{ env.VERSION }}" -o bin/podman-agent-linux-amd64 ./cmd/agent
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-s -w -X main.version=${{ env.VERSION }}" -o bin/homelab-agent-linux-amd64 ./cmd/agent
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v4
@@ -69,8 +69,8 @@ jobs:
           build-args: |
             VERSION=${{ env.VERSION }}
           tags: |
-            ghcr.io/brdweb/podman-manager:latest
-            ghcr.io/brdweb/podman-manager:${{ env.VERSION }}
+            ghcr.io/brdweb/homelab-control:latest
+            ghcr.io/brdweb/homelab-control:${{ env.VERSION }}
 
       - name: Build and push agent Docker image
         uses: docker/build-push-action@v7
@@ -82,8 +82,8 @@ jobs:
           build-args: |
             VERSION=${{ env.VERSION }}
           tags: |
-            ghcr.io/brdweb/podman-manager/agent:latest
-            ghcr.io/brdweb/podman-manager/agent:${{ env.VERSION }}
+            ghcr.io/brdweb/homelab-control/agent:latest
+            ghcr.io/brdweb/homelab-control/agent:${{ env.VERSION }}
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
@@ -91,7 +91,7 @@ jobs:
           tag_name: ${{ env.RELEASE_TAG }}
           name: ${{ env.VERSION }}
           body: |
-            ## Podman Manager ${{ env.VERSION }}
+            ## Homelab Control ${{ env.VERSION }}
             
             ### Changes
             - Snapshot cache with configurable TTL (reduces SSH polling)
@@ -104,12 +104,12 @@ jobs:
             - Structured JSON logging (slog)
             
             ### Downloads
-            - **Manager image**: `ghcr.io/brdweb/podman-manager:${{ env.VERSION }}` or `ghcr.io/brdweb/podman-manager:latest`
-            - **Agent image**: `ghcr.io/brdweb/podman-manager/agent:${{ env.VERSION }}` or `ghcr.io/brdweb/podman-manager/agent:latest`
-            - **Backend binary**: `podman-manager-linux-amd64`
-            - **Agent binary**: `podman-agent-linux-amd64`
+            - **Manager image**: `ghcr.io/brdweb/homelab-control:${{ env.VERSION }}` or `ghcr.io/brdweb/homelab-control:latest`
+            - **Agent image**: `ghcr.io/brdweb/homelab-control/agent:${{ env.VERSION }}` or `ghcr.io/brdweb/homelab-control/agent:latest`
+            - **Backend binary**: `homelab-control-linux-amd64`
+            - **Agent binary**: `homelab-agent-linux-amd64`
           files: |
-            backend/bin/podman-manager-linux-amd64
-            agent/bin/podman-agent-linux-amd64
+            backend/bin/homelab-control-linux-amd64
+            agent/bin/homelab-agent-linux-amd64
           draft: false
           prerelease: false

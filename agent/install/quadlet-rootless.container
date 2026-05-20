@@ -1,12 +1,12 @@
 [Unit]
-Description=Podman Manager Agent (Rootless)
+Description=Homelab Control Agent (Rootless)
 After=podman.service
 
 [Container]
-Image=ghcr.io/brdweb/podman-manager/agent:latest
+Image=ghcr.io/brdweb/homelab-control/agent:latest
 Pull=newer
-ContainerName=podman-manager-agent
-Volume=__HOME__/.config/podman-agent:/etc/podman-agent:Z
+ContainerName=homelab-control-agent
+Volume=__HOME__/.config/homelab-agent:/etc/homelab-agent:Z
 Volume=%t/podman/podman.sock:/run/podman/podman.sock
 Volume=__HOME__/.config/containers/systemd:/etc/containers/systemd:ro
 Volume=/proc:/host/proc:ro

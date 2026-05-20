@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package agent;
 
-option go_package = "github.com/brdweb/podman-manager/agent/proto;agentpb";
+option go_package = "github.com/brdweb/homelab-control/agent/proto;agentpb";
 
 import "google/protobuf/timestamp.proto";
 

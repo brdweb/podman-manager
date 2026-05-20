@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	agentpb "github.com/brdweb/podman-manager/agent/proto"
+	agentpb "github.com/brdweb/homelab-control/agent/proto"
 )
 
 type AgentMessage = agentpb.AgentMessage

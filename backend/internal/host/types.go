@@ -3,7 +3,7 @@ package host
 import (
 	"time"
 
-	"github.com/brdweb/podman-manager/internal/podman"
+	"github.com/brdweb/homelab-control/internal/podman"
 )
 
 type Container = podman.Container

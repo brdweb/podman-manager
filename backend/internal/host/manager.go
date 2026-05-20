@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/brdweb/podman-manager/internal/config"
+	"github.com/brdweb/homelab-control/internal/config"
 )
 
 type HostManager struct {

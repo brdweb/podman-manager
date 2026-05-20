@@ -11,22 +11,22 @@ import (
 	"strings"
 	"syscall"
 
-	connect "github.com/brdweb/podman-manager/agent/internal"
-	"github.com/brdweb/podman-manager/agent/internal/config"
-	"github.com/brdweb/podman-manager/agent/internal/podman"
+	connect "github.com/brdweb/homelab-control/agent/internal"
+	"github.com/brdweb/homelab-control/agent/internal/config"
+	"github.com/brdweb/homelab-control/agent/internal/podman"
 )
 
 var version = "2026.05.01"
 
 func main() {
-	configPath := flag.String("config", "/etc/podman-agent/config.yaml", "path to configuration file")
+	configPath := flag.String("config", "/etc/homelab-agent/config.yaml", "path to configuration file")
 	managerAddress := flag.String("manager-address", "", "manager gRPC address override")
 	token := flag.String("token", "", "enrollment token override")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Println("podman-agent", version)
+		fmt.Println("homelab-agent", version)
 		return
 	}
 

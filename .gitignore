@@ -1,5 +1,5 @@
 # Go
-backend/podman-manager
+backend/homelab-control
 backend/bin/
 *.exe
 *.exe~
