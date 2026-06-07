@@ -4,9 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"net"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -16,36 +14,6 @@ import (
 	"github.com/brdweb/homelab-control/internal/host"
 	xwebsocket "golang.org/x/net/websocket"
 )
-
-var logsStreamUpgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		return sameOrigin(r)
-	},
-}
-
-func sameOrigin(r *http.Request) bool {
-	origin := strings.TrimSpace(r.Header.Get("Origin"))
-	if origin == "" {
-		return true
-	}
-
-	originURL, err := url.Parse(origin)
-	if err != nil {
-		return false
-	}
-
-	return normalizeHost(originURL.Host) == normalizeHost(r.Host)
-}
-
-func normalizeHost(host string) string {
-	host = strings.ToLower(strings.TrimSpace(host))
-	if h, p, err := net.SplitHostPort(host); err == nil {
-		if p == "80" || p == "443" {
-			return strings.ToLower(h)
-		}
-	}
-	return host
-}
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	hosts := s.hostsSnapshot()
@@ -344,7 +312,13 @@ func (s *Server) handleContainerLogsStream(w http.ResponseWriter, r *http.Reques
 		tail = parsed
 	}
 
-	ws, err := logsStreamUpgrader.Upgrade(w, r, nil)
+	upgrader := websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool {
+			_, ok := s.originAllowed(r)
+			return ok
+		},
+	}
+	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return
 	}
@@ -630,6 +604,10 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	_, enabled := s.eventStreamSnapshot()
 	if !enabled {
 		writeError(w, http.StatusNotFound, "events stream is disabled")
+		return
+	}
+	if _, ok := s.originAllowed(r); !ok {
+		writeError(w, http.StatusForbidden, "origin is not allowed")
 		return
 	}
 

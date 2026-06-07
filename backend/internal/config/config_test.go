@@ -50,6 +50,76 @@ func TestMarshalEmitsDocumentedStrictHostKeyChecking(t *testing.T) {
 	}
 }
 
+func TestLoadBytesNormalizesAllowedOrigins(t *testing.T) {
+	cfg, err := LoadBytes([]byte(strings.Replace(testConfigYAML("strict_host_key_checking"), `server:
+  port: 18734
+  bind: "127.0.0.1"`, `server:
+  port: 18734
+  bind: "127.0.0.1"
+  allowed_origins:
+    - "https://homelab.example.com/"
+    - "http://localhost:80"`, 1)))
+	if err != nil {
+		t.Fatalf("LoadBytes returned error: %v", err)
+	}
+
+	want := []string{"https://homelab.example.com", "http://localhost"}
+	if len(cfg.Server.AllowedOrigins) != len(want) {
+		t.Fatalf("AllowedOrigins length = %d, want %d", len(cfg.Server.AllowedOrigins), len(want))
+	}
+	for i := range want {
+		if cfg.Server.AllowedOrigins[i] != want[i] {
+			t.Fatalf("AllowedOrigins[%d] = %q, want %q", i, cfg.Server.AllowedOrigins[i], want[i])
+		}
+	}
+}
+
+func TestLoadBytesRejectsAllowedOriginWithPath(t *testing.T) {
+	_, err := LoadBytes([]byte(strings.Replace(testConfigYAML("strict_host_key_checking"), `server:
+  port: 18734
+  bind: "127.0.0.1"`, `server:
+  port: 18734
+  bind: "127.0.0.1"
+  allowed_origins:
+    - "https://homelab.example.com/app"`, 1)))
+	if err == nil {
+		t.Fatal("LoadBytes returned nil error, want invalid allowed origin")
+	}
+	if !strings.Contains(err.Error(), "server.allowed_origins[0]") {
+		t.Fatalf("error = %q, want allowed origin path context", err)
+	}
+}
+
+func TestLoadBytesDefaultsDockerComposeRepoPath(t *testing.T) {
+	cfg, err := LoadBytes([]byte(testConfigYAML("strict_host_key_checking")))
+	if err != nil {
+		t.Fatalf("LoadBytes returned error: %v", err)
+	}
+	if cfg.Docker.ComposeRepoPath != "../homelab-docker" {
+		t.Fatalf("Docker.ComposeRepoPath = %q, want ../homelab-docker", cfg.Docker.ComposeRepoPath)
+	}
+	if cfg.Docker.DockMonURL != "https://dockmon.brdweb.com" {
+		t.Fatalf("Docker.DockMonURL = %q, want https://dockmon.brdweb.com", cfg.Docker.DockMonURL)
+	}
+}
+
+func TestLoadBytesTrimsDockerSettings(t *testing.T) {
+	cfg, err := LoadBytes([]byte(testConfigYAML("strict_host_key_checking") + `
+docker:
+  compose_repo_path: "  /srv/homelab-docker  "
+  dockmon_url: " https://dockmon.example.com/ "
+`))
+	if err != nil {
+		t.Fatalf("LoadBytes returned error: %v", err)
+	}
+	if cfg.Docker.ComposeRepoPath != "/srv/homelab-docker" {
+		t.Fatalf("Docker.ComposeRepoPath = %q, want /srv/homelab-docker", cfg.Docker.ComposeRepoPath)
+	}
+	if cfg.Docker.DockMonURL != "https://dockmon.example.com" {
+		t.Fatalf("Docker.DockMonURL = %q, want https://dockmon.example.com", cfg.Docker.DockMonURL)
+	}
+}
+
 func testConfigYAML(strictHostKeyField string) string {
 	return `server:
   port: 18734

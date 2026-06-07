@@ -144,6 +144,7 @@ func (s *Server) handleUpdateConfig(w http.ResponseWriter, r *http.Request) {
 	oldEvents := s.events
 	s.hosts = newHosts
 	s.config = cfg
+	s.originPolicy = newOriginPolicy(cfg.Server.AllowedOrigins)
 	s.events = newEvents
 	s.eventsEnabled = cfg.EnableEventsStream
 	s.mu.Unlock()

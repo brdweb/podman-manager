@@ -130,7 +130,7 @@ The installer:
 
 ## Configuration
 
-The backend uses a YAML configuration file to define the API server settings and authentication.
+The backend uses a YAML configuration file to define API server settings, SSH defaults, authentication, and managed hosts.
 
 ```yaml
 # Homelab Control Configuration
@@ -140,34 +140,52 @@ server:
   port: 18734
   # Bind address: 127.0.0.1 for local-only deployments
   bind: "127.0.0.1"
+  # Optional browser origins for a separate standalone webapp
+  allowed_origins:
+    - "https://homelab-control.example.com"
 
-# Agent gRPC server port
-agent:
-  port: 18735
+ssh:
+  key_path: "~/.ssh/id_ed25519"
+  connect_timeout: "5s"
+  keepalive_interval: "30s"
+  strict_host_key_checking: "accept-new"
 
-# SQLite auth database
+# Snapshot cache TTL for SSH polling
+cache_ttl: "3s"
+
+docker:
+  # Git-backed Docker Compose desired-state repository
+  compose_repo_path: "../homelab-docker"
+  # Optional DockMon dashboard URL surfaced by Docker diagnostics
+  dockmon_url: "https://dockmon.brdweb.com"
+
+# Optional login for the standalone web application
 auth:
-  enabled: true
-  db_path: "/etc/homelab-control/auth.db"
+  enabled: false
+  username: "admin"
+  password_hash: ""
+  session_ttl: "12h"
 
 # Enable real-time event streaming via WebSocket
 enable_events_stream: true
 
-# Optional local authentication (legacy single-user)
-local_auth:
-  enabled: false
-  username: ""
-  password_hash: ""
+hosts:
+  - name: "host-alpha"
+    address: "10.0.0.101"
+    port: 22
+    user: "your-user"
+    mode: "rootful"
 ```
 
 ### Configuration Sections
 
-- **server**: Defines the API port and bind address. Use `127.0.0.1` if the frontend is on the same machine.
-- **agent**: gRPC server port for agent connections (default 18735).
-- **auth**: SQLite-backed multi-user authentication.
-  - `db_path`: Path to the SQLite database (default `/etc/homelab-control/auth.db`).
+- **server**: Defines the API port, bind address, and optional cross-origin browser clients. Same-host browser requests are always allowed. Add exact `http` or `https` origins to `allowed_origins` when the standalone webapp is served from a different origin. Use `"*"` only on trusted networks.
+- **docker**: Git-backed Docker Compose desired-state source. `/api/v1/stacks` reads `stacks/<host>/<stack>/compose.yaml` from `compose_repo_path`; `/api/v1/diagnostics/docker` reports source availability, stack count, hosts, and the configured DockMon URL.
+- **ssh**: Shared SSH settings retained for legacy host endpoints, including `strict_host_key_checking` values of `strict`, `accept-new`, or `off`.
+- **cache_ttl**: Snapshot cache duration used to reduce SSH polling.
+- **auth**: Optional standalone webapp login settings.
 - **enable_events_stream**: Enable WebSocket-based real-time container events.
-- **local_auth**: Legacy single-user authentication (deprecated, use multi-user auth instead).
+- **hosts**: Docker host inventory for the current control plane, with legacy runtime fields retained until old SSH endpoints are replaced by Docker/DockMon APIs.
 
 ## User Roles
 

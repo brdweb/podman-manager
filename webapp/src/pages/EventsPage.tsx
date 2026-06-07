@@ -63,6 +63,7 @@ export function EventsPage() {
   const reconnectAttemptRef = useRef(0);
   const shouldReconnectRef = useRef(true);
   const sequenceRef = useRef(0);
+  const connectRef = useRef<(() => void) | null>(null);
 
   const connect = useCallback(() => {
     if (socketRef.current) {
@@ -112,12 +113,18 @@ export function EventsPage() {
       setRetryDelay(delay);
       setStatus((current) => (current === 'error' ? 'error' : 'disconnected'));
       reconnectTimerRef.current = window.setTimeout(() => {
-        connect();
+        connectRef.current?.();
       }, delay);
     });
   }, []);
 
   useEffect(() => {
+    connectRef.current = connect;
+  }, [connect]);
+
+  useEffect(() => {
+    let connectTimer: number | null = null;
+
     if (isPaused) {
       shouldReconnectRef.current = false;
       if (reconnectTimerRef.current) {
@@ -126,15 +133,18 @@ export function EventsPage() {
       }
       socketRef.current?.close();
       socketRef.current = null;
-      setRetryDelay(null);
-      setStatus('paused');
       return;
     }
 
-    connect();
+    connectTimer = window.setTimeout(() => {
+      connect();
+    }, 0);
 
     return () => {
       shouldReconnectRef.current = false;
+      if (connectTimer) {
+        window.clearTimeout(connectTimer);
+      }
       if (reconnectTimerRef.current) {
         window.clearTimeout(reconnectTimerRef.current);
         reconnectTimerRef.current = null;
@@ -143,6 +153,17 @@ export function EventsPage() {
       socketRef.current = null;
     };
   }, [connect, isPaused]);
+
+  const pauseStream = useCallback(() => {
+    setIsPaused(true);
+    setRetryDelay(null);
+    setStatus('paused');
+  }, []);
+
+  const resumeStream = useCallback(() => {
+    setIsPaused(false);
+    setStatus('connecting');
+  }, []);
 
   const hostOptions = useMemo(() => {
     const hosts = new Set<string>();
@@ -248,7 +269,7 @@ export function EventsPage() {
 
           <button
             type="button"
-            onClick={() => setIsPaused((current) => !current)}
+            onClick={isPaused ? resumeStream : pauseStream}
             className={`rounded-xl px-4 py-2.5 text-sm font-medium transition-colors ${
               isPaused
                 ? 'bg-orange-600 text-white hover:bg-orange-500'

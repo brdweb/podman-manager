@@ -39,6 +39,7 @@ type Server struct {
 	enrollHandler     *enroll.Handler
 	enrollCleanupStop chan struct{}
 	authCleanupStop   chan struct{}
+	originPolicy      originPolicy
 
 	eventsMu      sync.RWMutex
 	eventClients  map[*eventClient]struct{}
@@ -111,6 +112,7 @@ func NewServer(configPath string, cfg *config.Config, logger *slog.Logger, versi
 		enrollHandler:     enrollHandler,
 		enrollCleanupStop: make(chan struct{}),
 		authCleanupStop:   make(chan struct{}),
+		originPolicy:      newOriginPolicy(cfg.Server.AllowedOrigins),
 		eventClients:      make(map[*eventClient]struct{}),
 	}
 
@@ -215,7 +217,7 @@ func sshOnlyConfig(cfg *config.Config) *config.Config {
 }
 
 func (s *Server) Handler() http.Handler {
-	return withLogging(withCORS(s.mux))
+	return withLogging(s.withCORS(s.mux))
 }
 
 func (s *Server) authHandler(fn http.HandlerFunc) http.HandlerFunc {
@@ -344,6 +346,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /api/v1/inventory", s.viewerHandler(s.handleV1Inventory))
 	s.mux.HandleFunc("GET /api/v1/services/{id}", s.viewerHandler(s.handleV1Service))
 	s.mux.HandleFunc("GET /api/v1/stacks", s.viewerHandler(s.handleV1Stacks))
+	s.mux.HandleFunc("GET /api/v1/diagnostics/docker", s.viewerHandler(s.handleV1DockerDiagnostics))
 	s.mux.HandleFunc("GET /api/v1/links", s.viewerHandler(s.handleListLinks))
 	s.mux.HandleFunc("POST /api/v1/links", s.adminHandler(s.handleCreateLink))
 	s.mux.HandleFunc("PUT /api/v1/links/{id}", s.adminHandler(s.handleUpdateLink))
@@ -365,6 +368,13 @@ func (s *Server) eventStreamSnapshot() (*podman.EventStream, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.events, s.eventsEnabled
+}
+
+func (s *Server) originAllowed(r *http.Request) (string, bool) {
+	s.mu.RLock()
+	policy := s.originPolicy
+	s.mu.RUnlock()
+	return policy.allowedOrigin(r)
 }
 
 func (s *Server) runEventBroadcast(stream *podman.EventStream) {
@@ -442,6 +452,7 @@ func (s *Server) configSnapshot() *config.Config {
 
 	clone := *s.config
 	clone.Hosts = append([]config.HostConfig(nil), s.config.Hosts...)
+	clone.Server.AllowedOrigins = append([]string(nil), s.config.Server.AllowedOrigins...)
 	return &clone
 }
 
@@ -457,9 +468,19 @@ func writeError(w http.ResponseWriter, status int, message string) {
 	writeJSON(w, status, map[string]string{"error": message})
 }
 
-func withCORS(next http.Handler) http.Handler {
+func (s *Server) withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		origin, allowed := s.originAllowed(r)
+		if !allowed {
+			writeError(w, http.StatusForbidden, "origin is not allowed")
+			return
+		}
+
+		if origin != "" {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+			w.Header().Add("Vary", "Origin")
+		}
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 

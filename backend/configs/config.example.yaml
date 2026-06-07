@@ -6,6 +6,10 @@ server:
   port: 18734
   # Bind address: 127.0.0.1 for local-only (plugin proxies API through PHP)
   bind: "127.0.0.1"
+  # Optional browser origins for a separate standalone webapp.
+  # Same-host requests are always allowed. Use exact http(s) origins.
+  # "*" allows any origin and should only be used on trusted networks.
+  allowed_origins: []
 
 ssh:
   # Path to the SSH private key (ed25519 recommended)
@@ -20,6 +24,13 @@ ssh:
 # Snapshot cache TTL (reduces SSH polling)
 cache_ttl: "3s"
 
+docker:
+  # Git-backed Docker Compose desired-state repository.
+  # The /api/v1/stacks endpoint reads stacks/<host>/<stack>/compose.yaml here.
+  compose_repo_path: "../homelab-docker"
+  # Optional DockMon dashboard URL surfaced by Docker diagnostics.
+  dockmon_url: "https://dockmon.brdweb.com"
+
 # Optional login for the standalone web application.
 # Generate password_hash with:
 #   htpasswd -bnBC 10 "" your-password | tr -d ':\n'
@@ -31,23 +42,23 @@ auth:
 
 enable_events_stream: true
 
-# Podman hosts to manage
+# Docker hosts to surface in inventory. The legacy mode field remains required
+# until the old SSH runtime endpoints are fully replaced by Docker/DockMon APIs.
 hosts:
-  - name: "host-alpha"
-    address: "10.0.0.101"
-    port: 22
-    user: "your-user"
-    # rootful = uses 'sudo podman', rootless = uses 'podman' directly
-    mode: "rootful"
-
-  - name: "host-beta"
-    address: "10.0.0.102"
+  - name: "yoda-docker"
+    address: "192.168.40.60"
     port: 22
     user: "your-user"
     mode: "rootful"
 
-  - name: "host-gamma"
-    address: "10.0.0.103"
+  - name: "xwing-docker"
+    address: "192.168.40.80"
     port: 22
     user: "your-user"
-    mode: "rootless"
+    mode: "rootful"
+
+  - name: "obiwan-docker"
+    address: "192.168.40.70"
+    port: 22
+    user: "your-user"
+    mode: "rootful"

@@ -7,7 +7,7 @@ import {
   useUpdateUser,
   useUsers,
 } from '../hooks/useUsers';
-import { useToast } from '../components/Toast';
+import { useToast } from '../components/toastContext';
 
 type Role = User['role'];
 

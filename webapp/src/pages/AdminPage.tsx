@@ -1,8 +1,9 @@
-import { useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
 import { yaml as yamlLanguage } from '@codemirror/lang-yaml';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { lineNumbers } from '@codemirror/view';
+import { parseDocument } from 'yaml';
 import { useConfig, useSaveConfig } from '../hooks/useAdmin';
 import type { ConfigResponse } from '../types/api';
 
@@ -49,6 +50,7 @@ function AdminForm({ data }: { data: ConfigResponse }) {
   const [username, setUsername] = useState(data.auth.username ?? '');
   const [password, setPassword] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const yamlValidation = useMemo(() => validateYaml(yaml), [yaml]);
 
   const isDirty =
     yaml !== data.yaml ||
@@ -59,6 +61,10 @@ function AdminForm({ data }: { data: ConfigResponse }) {
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSuccessMessage('');
+
+    if (!yamlValidation.valid) {
+      return;
+    }
 
     const result = await saveConfig.mutateAsync({
       yaml,
@@ -147,6 +153,15 @@ function AdminForm({ data }: { data: ConfigResponse }) {
             theme={oneDark}
             className="min-h-[28rem] overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 text-sm outline-none transition-colors focus-within:border-zinc-600"
           />
+          <div
+            className={`mt-3 rounded-xl border px-3 py-2 text-xs ${
+              yamlValidation.valid
+                ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300'
+                : 'border-red-500/30 bg-red-500/10 text-red-300'
+            }`}
+          >
+            {yamlValidation.message}
+          </div>
         </section>
       </div>
 
@@ -165,7 +180,7 @@ function AdminForm({ data }: { data: ConfigResponse }) {
       <div className="flex justify-end">
         <button
           type="submit"
-          disabled={!isDirty || saveConfig.isPending}
+          disabled={!isDirty || saveConfig.isPending || !yamlValidation.valid}
           className="rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {saveConfig.isPending ? 'Saving...' : 'Save and Apply'}
@@ -173,6 +188,51 @@ function AdminForm({ data }: { data: ConfigResponse }) {
       </div>
     </form>
   );
+}
+
+type YamlValidation = {
+  valid: boolean;
+  message: string;
+};
+
+interface YamlIssue extends Error {
+  linePos?: Array<{ line: number; col: number }>;
+}
+
+function validateYaml(value: string): YamlValidation {
+  if (!value.trim()) {
+    return { valid: false, message: 'Configuration YAML cannot be empty.' };
+  }
+
+  const document = parseDocument(value);
+  if (document.errors.length > 0) {
+    return {
+      valid: false,
+      message: formatYamlIssue(document.errors[0] as YamlIssue),
+    };
+  }
+
+  const parsed = document.toJSON();
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return { valid: false, message: 'Configuration YAML must be a mapping at the top level.' };
+  }
+
+  if (document.warnings.length > 0) {
+    return {
+      valid: true,
+      message: `YAML parses with warning: ${formatYamlIssue(document.warnings[0] as YamlIssue)}`,
+    };
+  }
+
+  return { valid: true, message: 'YAML syntax looks valid.' };
+}
+
+function formatYamlIssue(issue: YamlIssue): string {
+  const position = issue.linePos?.[0];
+  if (!position) {
+    return issue.message;
+  }
+  return `Line ${position.line}, column ${position.col}: ${issue.message}`;
 }
 
 function Field({

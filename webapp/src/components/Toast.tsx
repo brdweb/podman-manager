@@ -1,14 +1,5 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from 'react';
-
-type ToastType = 'success' | 'error' | 'info';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { ToastContext, type ToastType } from './toastContext';
 
 interface Toast {
   id: number;
@@ -16,13 +7,6 @@ interface Toast {
   type: ToastType;
   duration: number;
 }
-
-interface ToastContextValue {
-  addToast: (message: string, type?: ToastType, duration?: number) => void;
-  removeToast: (id: number) => void;
-}
-
-export const ToastContext = createContext<ToastContextValue | null>(null);
 
 const defaultDuration = 4000;
 const maxVisibleToasts = 3;
@@ -68,14 +52,6 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       <ToastContainer toasts={toasts} onClose={removeToast} />
     </ToastContext.Provider>
   );
-}
-
-export function useToast() {
-  const context = useContext(ToastContext);
-  if (!context) {
-    throw new Error('useToast must be used within a ToastProvider');
-  }
-  return context;
 }
 
 export function ToastContainer({

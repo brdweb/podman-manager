@@ -71,8 +71,28 @@ export interface ControlOverview {
 }
 
 export interface StackListResponse {
-  stacks: unknown[];
+  stacks: ComposeStack[];
+  count: number;
+  source_root: string;
+  status: 'ok' | 'unavailable';
   message?: string;
+}
+
+export interface ComposeStack {
+  host: string;
+  name: string;
+  project_name?: string;
+  relative_path: string;
+  services: ComposeService[];
+  service_count: number;
+  source: string;
+}
+
+export interface ComposeService {
+  name: string;
+  image?: string;
+  container_name?: string;
+  profiles?: string[];
 }
 
 export function getControlOverview() {

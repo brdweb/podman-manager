@@ -1,6 +1,10 @@
 server:
   port: 18734
   bind: "0.0.0.0"
+  # Optional browser origins for a separate standalone webapp.
+  # Same-host requests are always allowed. Use exact http(s) origins.
+  # "*" allows any origin and should only be used on trusted networks.
+  allowed_origins: []
 
 ssh:
   key_path: "/root/.ssh/id_ed25519"
@@ -11,6 +15,10 @@ ssh:
 cache_ttl: "3s"
 enable_events_stream: true
 
+docker:
+  compose_repo_path: "../homelab-docker"
+  dockmon_url: "https://dockmon.brdweb.com"
+
 auth:
   enabled: false
   username: "admin"
@@ -18,15 +26,15 @@ auth:
   session_ttl: "12h"
 
 hosts:
-  - name: yoda-podman
+  - name: yoda-docker
     address: "192.168.40.60"
     user: "brdweb"
     mode: "rootful"
-  - name: xwing-podman
+  - name: xwing-docker
     address: "192.168.40.80"
     user: "brdweb"
     mode: "rootful"
-  - name: obiwan-podman
+  - name: obiwan-docker
     address: "192.168.40.70"
     user: "brdweb"
-    mode: "rootless"
+    mode: "rootful"

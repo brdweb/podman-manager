@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useCreateContainer } from '../hooks/useContainers';
 import type { CreateContainerPayload } from '../types/api';
-import { useToast } from '../components/Toast';
+import { useToast } from '../components/toastContext';
 
 type StepKey = 'basic' | 'networking' | 'storage' | 'advanced';
 

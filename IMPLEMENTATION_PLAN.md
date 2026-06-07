@@ -9,7 +9,7 @@ Stabilize the current Homelab Control codebase, align documented behavior with i
 Acceptance criteria:
 
 - `node`, `npm`, TypeScript build, ESLint, PHP page lint, Go build/test tooling, and LSP diagnostics are available or limitations are documented.
-- Podman CLI or Podman Desktop is available for local container image verification.
+- Docker or another OCI-compatible local builder is available for container image verification.
 - Webapp dependencies install from `package-lock.json`.
 - Existing build/lint/test commands are run before feature work begins.
 
@@ -17,8 +17,8 @@ Tasks:
 
 1. Install or enable Go and `gopls` for backend diagnostics.
 2. Install TypeScript language server support for editor/LSP diagnostics.
-3. Confirm Podman machine availability and use `podman build` for local image verification.
-4. Capture baseline results for `npm run build`, `npm run lint`, backend build/test, dependency audit, and `podman build`.
+3. Confirm local OCI builder availability and use `docker build` or equivalent for image verification.
+4. Capture baseline results for `npm run build`, `npm run lint`, backend build/test, dependency audit, and image build.
 
 ## Phase 1: Correctness, security, and release hygiene
 
@@ -59,18 +59,20 @@ Tasks:
 
 Acceptance criteria:
 
-- Core backend packages have unit coverage for parsing, config, auth, update reconstruction, and command sanitization.
-- Long-lived streams handle permanent failures without unbounded retries.
+- Core backend packages have unit coverage for Docker Compose inventory parsing, config, auth, reload behavior, and command/action validation.
+- Docker and DockMon become the primary runtime assumptions; legacy Podman paths are isolated behind compatibility boundaries or explicitly deferred.
 - CORS/WebSocket origin behavior is configurable and safe by default for standalone deployments.
+- `/api/v1/*` exposes the Git-backed Docker Compose desired state from the `homelab-docker` repository before live DockMon mutations are enabled.
 
 Tasks:
 
 1. Add tests for config defaults, YAML key compatibility, and validation errors.
-2. Add tests for Podman JSON parsing and update-check behavior.
+2. Add tests and implementation for Docker Compose stack inventory parsing from `homelab-docker/stacks/<host>/<stack>/compose.yaml`.
 3. Add tests for session/auth behavior and config reload side effects.
 4. Make CORS and WebSocket origin policy configurable.
-5. Improve standalone update reconstruction so more container runtime options are preserved.
-6. Add diagnostics endpoints for host Podman version, socket/API availability, and permission errors.
+5. Replace Podman-specific update reconstruction with Git-backed Compose/DockMon action records and explicit approval flow.
+6. Add diagnostics endpoints for Docker host reachability, DockMon availability, Compose source freshness, and permission errors.
+7. Rename user-facing Podman terminology to Docker/Homelab Control while preserving compatibility where needed.
 
 ## Phase 4: CI and release confidence
 
@@ -83,4 +85,4 @@ Tasks:
 
 1. Add CI jobs for backend test/build, frontend lint/build/audit, and release verification.
 2. Keep release workflow focused on publishing artifacts; avoid brittle generated-file commit-back where possible.
-3. Document local release dry-run steps using Podman.
+3. Document local release dry-run steps using Docker or another OCI-compatible builder.

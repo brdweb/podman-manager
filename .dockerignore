@@ -1,0 +1,44 @@
+.git
+.github
+.idea
+.vscode
+
+# Local runtime state
+*.db
+*.db-shm
+*.db-wal
+*.log
+config.yaml
+auth.db
+homelab-control-api.log
+homelab-control-web.log
+
+# Secrets and local env
+.env
+*.env.local
+*.key
+*.pem
+id_ed25519
+id_ed25519.pub
+id_rsa
+id_rsa.pub
+
+# Build and dependency artifacts
+backend/bin
+backend/homelab-control
+webapp/node_modules
+webapp/dist
+node_modules
+dist
+build
+coverage
+*.test
+*.out
+*.tar.gz
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~

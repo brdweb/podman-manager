@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -91,10 +92,67 @@ func (s *Server) handleV1Service(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleV1Stacks(w http.ResponseWriter, r *http.Request) {
+	cfg := s.configSnapshot()
+	repoPath := s.resolveConfigPath(cfg.Docker.ComposeRepoPath)
+	stacks, err := control.LoadComposeStacks(r.Context(), repoPath)
+	if control.IsComposeRepoMissing(err) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"stacks":      []any{},
+			"count":       0,
+			"source_root": repoPath,
+			"status":      "unavailable",
+			"message":     "Docker Compose repository was not found.",
+		})
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"stacks":  []any{},
-		"message": "Docker Compose stack inventory is ready for agent-backed implementation.",
+		"stacks":      stacks,
+		"count":       len(stacks),
+		"source_root": repoPath,
+		"status":      "ok",
 	})
+}
+
+func (s *Server) handleV1DockerDiagnostics(w http.ResponseWriter, r *http.Request) {
+	cfg := s.configSnapshot()
+	repoPath := s.resolveConfigPath(cfg.Docker.ComposeRepoPath)
+	stacks, err := control.LoadComposeStacks(r.Context(), repoPath)
+	hosts := composeStackHosts(stacks)
+
+	resp := map[string]any{
+		"runtime":           "docker",
+		"dockmon_url":       cfg.Docker.DockMonURL,
+		"compose_repo":      repoPath,
+		"compose_available": err == nil,
+		"stack_count":       len(stacks),
+		"hosts":             hosts,
+	}
+	if err != nil {
+		resp["status"] = "degraded"
+		resp["compose_error"] = err.Error()
+		writeJSON(w, http.StatusOK, resp)
+		return
+	}
+
+	resp["status"] = "ok"
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func composeStackHosts(stacks []control.ComposeStack) []string {
+	hostSet := make(map[string]struct{}, len(stacks))
+	for _, stack := range stacks {
+		hostSet[stack.Host] = struct{}{}
+	}
+	hosts := make([]string, 0, len(hostSet))
+	for host := range hostSet {
+		hosts = append(hosts, host)
+	}
+	sort.Strings(hosts)
+	return hosts
 }
 
 func (s *Server) handleListLinks(w http.ResponseWriter, r *http.Request) {

@@ -2,6 +2,8 @@ package config
 
 import (
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,6 +18,7 @@ type Config struct {
 	Hosts              []HostConfig         `yaml:"hosts"`
 	Auth               AuthConfig           `yaml:"auth,omitempty"`
 	State              StateConfig          `yaml:"state,omitempty"`
+	Docker             DockerConfig         `yaml:"docker,omitempty"`
 	HomepageImport     HomepageImportConfig `yaml:"homepage_import,omitempty"`
 	Integrations       IntegrationsConfig   `yaml:"integrations,omitempty"`
 	EnableEventsStream bool                 `yaml:"enable_events_stream"`
@@ -23,9 +26,10 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Port       int    `yaml:"port"`
-	Bind       string `yaml:"bind"`
-	AuthDBPath string `yaml:"auth_db_path,omitempty"`
+	Port           int      `yaml:"port"`
+	Bind           string   `yaml:"bind"`
+	AuthDBPath     string   `yaml:"auth_db_path,omitempty"`
+	AllowedOrigins []string `yaml:"allowed_origins,omitempty"`
 }
 
 type SSHConfig struct {
@@ -103,6 +107,11 @@ type StateConfig struct {
 	Driver     string `yaml:"driver,omitempty"`
 	DSN        string `yaml:"dsn,omitempty"`
 	SQLitePath string `yaml:"sqlite_path,omitempty"`
+}
+
+type DockerConfig struct {
+	ComposeRepoPath string `yaml:"compose_repo_path,omitempty"`
+	DockMonURL      string `yaml:"dockmon_url,omitempty"`
 }
 
 type HomepageImportConfig struct {
@@ -189,6 +198,10 @@ func defaultConfig() *Config {
 		State: StateConfig{
 			Driver: "sqlite",
 		},
+		Docker: DockerConfig{
+			ComposeRepoPath: "../homelab-docker",
+			DockMonURL:      "https://dockmon.brdweb.com",
+		},
 		HomepageImport: HomepageImportConfig{
 			BookmarksPath: "../homelab/homepage-config/bookmarks.yaml",
 			ServicesPath:  "../homelab/homepage-config/services.yaml",
@@ -208,6 +221,13 @@ func defaultConfig() *Config {
 func (c *Config) Validate() error {
 	if c.Server.Port < 1 || c.Server.Port > 65535 {
 		return fmt.Errorf("server.port must be between 1 and 65535, got %d", c.Server.Port)
+	}
+	for i, origin := range c.Server.AllowedOrigins {
+		normalized, err := NormalizeAllowedOrigin(origin)
+		if err != nil {
+			return fmt.Errorf("server.allowed_origins[%d]: %w", i, err)
+		}
+		c.Server.AllowedOrigins[i] = normalized
 	}
 
 	if len(c.Hosts) == 0 {
@@ -306,6 +326,12 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("state.dsn is required when state.driver is 'postgres'")
 	}
 
+	c.Docker.ComposeRepoPath = strings.TrimSpace(c.Docker.ComposeRepoPath)
+	if c.Docker.ComposeRepoPath == "" {
+		c.Docker.ComposeRepoPath = "../homelab-docker"
+	}
+	c.Docker.DockMonURL = strings.TrimRight(strings.TrimSpace(c.Docker.DockMonURL), "/")
+
 	if c.Integrations.OpenClaw.ChatPath == "" {
 		c.Integrations.OpenClaw.ChatPath = "/api/chat"
 	}
@@ -314,6 +340,44 @@ func (c *Config) Validate() error {
 	}
 
 	return nil
+}
+
+func NormalizeAllowedOrigin(raw string) (string, error) {
+	origin := strings.TrimSpace(raw)
+	if origin == "" {
+		return "", fmt.Errorf("origin is required")
+	}
+	if origin == "*" {
+		return "*", nil
+	}
+
+	parsed, err := url.Parse(origin)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return "", fmt.Errorf("must be '*' or an absolute http(s) origin")
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return "", fmt.Errorf("scheme must be http or https")
+	}
+	if parsed.Path != "" && parsed.Path != "/" {
+		return "", fmt.Errorf("must not include a path")
+	}
+	if parsed.RawQuery != "" || parsed.Fragment != "" || parsed.User != nil {
+		return "", fmt.Errorf("must not include user info, query, or fragment")
+	}
+
+	return parsed.Scheme + "://" + normalizeOriginHost(parsed.Scheme, parsed.Host), nil
+}
+
+func normalizeOriginHost(scheme string, host string) string {
+	host = strings.ToLower(strings.TrimSpace(host))
+	name, port, err := net.SplitHostPort(host)
+	if err != nil {
+		return host
+	}
+	if (scheme == "http" && port == "80") || (scheme == "https" && port == "443") {
+		return strings.ToLower(name)
+	}
+	return strings.ToLower(net.JoinHostPort(name, port))
 }
 
 func ExpandPath(path string) string {
